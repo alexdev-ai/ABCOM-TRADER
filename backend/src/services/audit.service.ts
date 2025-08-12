@@ -22,7 +22,7 @@ export class AuditService {
           userId: data.userId ?? null,
           eventType: data.eventType,
           eventAction: data.eventAction,
-          eventData: data.eventData ? JSON.parse(JSON.stringify(data.eventData)) : null,
+          eventData: data.eventData ? JSON.stringify(data.eventData) : null,
           ipAddress: data.ipAddress ?? null,
           userAgent: data.userAgent ?? null
         }

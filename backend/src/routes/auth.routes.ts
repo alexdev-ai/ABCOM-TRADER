@@ -53,6 +53,7 @@ router.post('/register',
           expiresIn: result.tokens.expiresIn
         }
       });
+      return;
 
     } catch (error) {
       const { clientIP, userAgent } = getClientInfo(req);
@@ -104,13 +105,14 @@ router.post('/register',
           message: 'Registration failed. Please try again.'
         }
       });
+      return;
     }
   }
 );
 
 /**
  * POST /api/v1/auth/login
- * Authenticate user login
+ * Enhanced user login with refresh tokens and security features
  */
 router.post('/login',
   loginLimiter,
@@ -118,11 +120,21 @@ router.post('/login',
   validateSchema(loginSchema),
   async (req: Request, res: Response) => {
     try {
-      const { email, password } = req.body as LoginData;
+      const { email, password, rememberMe } = req.body as LoginData;
       const { clientIP, userAgent } = getClientInfo(req);
 
-      // Authenticate user
-      const result = await AuthService.loginUser(email, password);
+      // Use enhanced login with security features
+      const result = await AuthService.enhancedLogin(email, password, clientIP, userAgent, rememberMe);
+
+      // Set secure HTTP-only cookie for refresh token if available
+      if (result.tokens.refreshToken) {
+        res.cookie('refresh_token', result.tokens.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000 // 30 days or 7 days
+        });
+      }
 
       // Log successful login
       await AuditService.logLogin(
@@ -141,26 +153,48 @@ router.post('/login',
           expiresIn: result.tokens.expiresIn
         }
       });
+      return;
 
     } catch (error) {
       const { clientIP, userAgent } = getClientInfo(req);
 
-      if (error instanceof Error && error.message === 'INVALID_CREDENTIALS') {
-        // Log failed login attempt
-        await AuditService.logFailedLogin(
-          req.body.email || 'unknown',
-          'invalid_credentials',
-          clientIP,
-          userAgent
-        );
+      if (error instanceof Error) {
+        if (error.message === 'INVALID_CREDENTIALS') {
+          // Log failed login attempt
+          await AuditService.logFailedLogin(
+            req.body.email || 'unknown',
+            'invalid_credentials',
+            clientIP,
+            userAgent
+          );
 
-        return res.status(401).json({
-          success: false,
-          error: {
-            code: 'INVALID_CREDENTIALS',
-            message: 'Invalid email or password'
-          }
-        });
+          return res.status(401).json({
+            success: false,
+            error: {
+              code: 'INVALID_CREDENTIALS',
+              message: 'Invalid email or password'
+            }
+          });
+        }
+
+        if (error.message.startsWith('ACCOUNT_LOCKED:')) {
+          const remainingTime = error.message.split(':')[1];
+          
+          await AuditService.logFailedLogin(
+            req.body.email || 'unknown',
+            'account_locked',
+            clientIP,
+            userAgent
+          );
+
+          return res.status(423).json({
+            success: false,
+            error: {
+              code: 'ACCOUNT_LOCKED',
+              message: `Account temporarily locked. Try again in ${remainingTime} minutes.`
+            }
+          });
+        }
       }
 
       // Log general login failure
@@ -179,9 +213,136 @@ router.post('/login',
           message: 'Login failed. Please try again.'
         }
       });
+      return;
     }
   }
 );
+
+/**
+ * POST /api/v1/auth/refresh
+ * Refresh access token using refresh token
+ */
+router.post('/refresh', async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies.refresh_token;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'REFRESH_TOKEN_REQUIRED',
+          message: 'Refresh token is required'
+        }
+      });
+    }
+
+    // Validate refresh token
+    const tokenData = await AuthService.validateRefreshToken(refreshToken);
+    if (!tokenData) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Invalid or expired refresh token'
+        }
+      });
+    }
+
+    // Get user data
+    const user = await AuthService.getUserById(tokenData.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'User not found'
+        }
+      });
+    }
+
+    // Generate new access token
+    const tokens = AuthService.generateToken(tokenData.userId);
+
+    // Generate new refresh token (rotation)
+    const newRefreshToken = await AuthService.generateRefreshToken(tokenData.userId, tokenData.rememberMe);
+
+    // Revoke old refresh token
+    await AuthService.revokeRefreshToken(refreshToken);
+
+    // Set new refresh token cookie
+    res.cookie('refresh_token', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: tokenData.rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
+    });
+
+    res.json({
+      success: true,
+      data: {
+        token: tokens.accessToken,
+        expiresIn: tokens.expiresIn
+      }
+    });
+    return;
+
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: 'REFRESH_FAILED',
+        message: 'Token refresh failed'
+      }
+    });
+    return;
+  }
+});
+
+/**
+ * POST /api/v1/auth/logout
+ * Logout user and revoke refresh token
+ */
+router.post('/logout', async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies.refresh_token;
+
+    if (refreshToken) {
+      // Revoke refresh token
+      await AuthService.revokeRefreshToken(refreshToken);
+    }
+
+    // Clear refresh token cookie
+    res.clearCookie('refresh_token');
+
+    // Log logout
+    const { clientIP, userAgent } = getClientInfo(req);
+    await AuditService.log({
+      eventType: 'authentication',
+      eventAction: 'user_logout',
+      eventData: {
+        timestamp: new Date().toISOString()
+      },
+      ipAddress: clientIP,
+      userAgent
+    });
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+    return;
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'LOGOUT_FAILED',
+        message: 'Logout failed'
+      }
+    });
+    return;
+  }
+});
 
 /**
  * GET /api/v1/auth/me
@@ -223,6 +384,7 @@ router.get('/me', async (req: Request, res: Response) => {
       success: true,
       data: { user }
     });
+    return;
 
   } catch (error) {
     if (error instanceof Error && error.message === 'Invalid or expired token') {
@@ -242,6 +404,7 @@ router.get('/me', async (req: Request, res: Response) => {
         message: 'An error occurred while fetching user data'
       }
     });
+    return;
   }
 });
 

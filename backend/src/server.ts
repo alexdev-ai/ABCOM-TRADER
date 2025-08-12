@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { generalLimiter } from '@/middleware/rateLimiter.middleware';
 import authRoutes from '@/routes/auth.routes';
+import fundingRoutes from '@/routes/funding.routes';
+import portfolioRoutes from '@/routes/portfolio.routes';
+import tradingRoutes from '@/routes/trading.routes';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +54,9 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/funding', fundingRoutes);
+app.use('/api/v1/portfolio', portfolioRoutes);
+app.use('/api/v1/trading', tradingRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -81,6 +87,9 @@ app.listen(PORT, () => {
   console.log(`🚀 SmartTrade AI Backend running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔐 Auth API: http://localhost:${PORT}/api/v1/auth`);
+  console.log(`💰 Funding API: http://localhost:${PORT}/api/v1/funding`);
+  console.log(`📈 Portfolio API: http://localhost:${PORT}/api/v1/portfolio`);
+  console.log(`📊 Trading API: http://localhost:${PORT}/api/v1/trading`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 

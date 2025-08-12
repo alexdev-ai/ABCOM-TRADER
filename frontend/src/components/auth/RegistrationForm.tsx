@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
 
 // Registration form validation schema based on Context7 research
 const registrationSchema = z.object({
@@ -23,16 +24,17 @@ const registrationSchema = z.object({
 export type RegistrationFormData = z.infer<typeof registrationSchema>;
 
 interface RegistrationFormProps {
-  onSubmit: (data: RegistrationFormData) => Promise<void>;
-  isLoading?: boolean;
+  onSuccess?: () => void;
 }
 
 export const RegistrationForm: React.FC<RegistrationFormProps> = ({ 
-  onSubmit, 
-  isLoading = false 
+  onSuccess
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+  
+  // Auth store integration
+  const { isLoading, error, clearError } = useAuthStore();
 
   const {
     register,
@@ -77,7 +79,30 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
   const handleFormSubmit = async (data: RegistrationFormData) => {
     try {
-      await onSubmit(data);
+      clearError();
+      
+      // Register using the auth store
+      const response = await fetch('http://localhost:3003/api/v1/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error?.message || 'Registration failed');
+      }
+
+      // Store token in localStorage for auth store
+      localStorage.setItem('access_token', result.data.token);
+      
+      // Call success callback
+      onSuccess?.();
+      
     } catch (error) {
       console.error('Registration failed:', error);
     }

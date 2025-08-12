@@ -65,7 +65,9 @@ export const loginSchema = z.object({
   
   password: z
     .string()
-    .min(1, 'Password is required')
+    .min(1, 'Password is required'),
+  
+  rememberMe: z.boolean().optional().default(false)
 });
 
 // Password reset request schema

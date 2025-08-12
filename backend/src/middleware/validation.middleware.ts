@@ -16,7 +16,7 @@ export interface ApiError {
 }
 
 export const validateSchema = (schema: z.ZodSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     try {
       const validatedData = schema.parse(req.body);
       req.body = validatedData;
@@ -37,7 +37,8 @@ export const validateSchema = (schema: z.ZodSchema) => {
           }
         };
 
-        return res.status(400).json(apiError);
+        res.status(400).json(apiError);
+        return;
       }
 
       // Handle unexpected validation errors
@@ -49,12 +50,13 @@ export const validateSchema = (schema: z.ZodSchema) => {
         }
       };
 
-      return res.status(500).json(apiError);
+      res.status(500).json(apiError);
+      return;
     }
   };
 };
 
-export const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
+export const sanitizeInput = (req: Request, res: Response, next: NextFunction): void => {
   // Basic input sanitization
   if (req.body) {
     for (const key in req.body) {

@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -16,18 +16,24 @@ model User {
   passwordHash    String   @map("password_hash")
   firstName       String   @map("first_name")
   lastName        String   @map("last_name")
-  dateOfBirth     DateTime @map("date_of_birth") @db.Date
+  dateOfBirth     DateTime @map("date_of_birth")
   phoneNumber     String   @map("phone_number")
-  accountBalance  Decimal  @default(0.0000) @map("account_balance") @db.Decimal(19, 4)
-  riskTolerance   RiskTolerance @map("risk_tolerance")
-  kycStatus       KycStatus @default(PENDING) @map("kyc_status")
+  accountBalance  Decimal  @default(0.0000) @map("account_balance")
+  riskTolerance   String @map("risk_tolerance")
+  kycStatus       String @default("pending") @map("kyc_status")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
-  riskManagement  RiskManagement?
-  auditLogs       AuditLog[]
+  riskManagement    RiskManagement?
+  auditLogs         AuditLog[]
+  refreshTokens     RefreshToken[]
+  failedAttempts    FailedLoginAttempt[]
+  transactions      Transaction[]
+  holdings          Holding[]
+  orders            Order[]
+  tradingSessions   TradingSession[]
 
   @@map("users")
 }
@@ -35,10 +41,10 @@ model User {
 model RiskManagement {
   id               String   @id @default(cuid())
   userId           String   @unique @map("user_id")
-  riskProfile      RiskTolerance @map("risk_profile")
-  dailyLossLimit   Decimal  @map("daily_loss_limit") @db.Decimal(19, 4)
-  weeklyLossLimit  Decimal  @map("weekly_loss_limit") @db.Decimal(19, 4)
-  monthlyLossLimit Decimal  @map("monthly_loss_limit") @db.Decimal(19, 4)
+  riskProfile      String @map("risk_profile")
+  dailyLossLimit   Decimal  @map("daily_loss_limit")
+  weeklyLossLimit  Decimal  @map("weekly_loss_limit")
+  monthlyLossLimit Decimal  @map("monthly_loss_limit")
   createdAt        DateTime @default(now()) @map("created_at")
 
   // Relations
@@ -52,7 +58,7 @@ model AuditLog {
   userId      String?  @map("user_id")
   eventType   String   @map("event_type")
   eventAction String   @map("event_action")
-  eventData   Json?    @map("event_data")
+  eventData   String?  @map("event_data")
   ipAddress   String?  @map("ip_address")
   userAgent   String?  @map("user_agent")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -63,18 +69,137 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-enum RiskTolerance {
-  CONSERVATIVE @map("conservative")
-  MODERATE     @map("moderate")
-  AGGRESSIVE   @map("aggressive")
+model RefreshToken {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  tokenHash   String   @map("token_hash")
+  expiresAt   DateTime @map("expires_at")
+  isRevoked   Boolean  @default(false) @map("is_revoked")
+  rememberMe  Boolean  @default(false) @map("remember_me")
+  createdAt   DateTime @default(now()) @map("created_at")
+  lastUsed    DateTime? @map("last_used")
 
-  @@map("risk_tolerance")
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@index([userId, isRevoked])
+  @@index([expiresAt])
 }
 
-enum KycStatus {
-  PENDING   @map("pending")
-  APPROVED  @map("approved")
-  REJECTED  @map("rejected")
+model FailedLoginAttempt {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  ipAddress   String   @map("ip_address")
+  attemptTime DateTime @default(now()) @map("attempt_time")
+  userAgent   String?  @map("user_agent")
 
-  @@map("kyc_status")
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("failed_login_attempts")
+  @@index([userId, attemptTime])
+  @@index([ipAddress, attemptTime])
+}
+
+// Sprint 2: Trading and Portfolio Models
+
+model Transaction {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  type          String      // 'funding', 'trade_buy', 'trade_sell'
+  amount        Decimal
+  status        String      @default("completed") // 'pending', 'completed', 'failed'
+  referenceId   String?     @map("reference_id") // External reference for funding
+  description   String?
+  metadata      String?     // JSON string for additional data
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+  @@index([userId, type])
+  @@index([userId, createdAt])
+}
+
+model Holding {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  symbol        String      // Stock symbol (e.g., 'AAPL')
+  quantity      Decimal
+  averageCost   Decimal     @map("average_cost")
+  totalCost     Decimal     @map("total_cost")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("holdings")
+  @@unique([userId, symbol])
+  @@index([userId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  symbol        String      // Stock symbol (e.g., 'AAPL')
+  type          String      // 'buy', 'sell'
+  quantity      Decimal
+  price         Decimal
+  totalAmount   Decimal     @map("total_amount")
+  status        String      @default("completed") // 'pending', 'completed', 'cancelled'
+  executedAt    DateTime?   @map("executed_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+  @@index([userId, createdAt])
+  @@index([symbol])
+}
+
+model StockPrice {
+  id            String      @id @default(cuid())
+  symbol        String      @unique
+  price         Decimal
+  change        Decimal     @default(0.00)
+  changePercent Decimal     @default(0.00) @map("change_percent")
+  volume        Int         @default(0)
+  lastUpdated   DateTime    @default(now()) @map("last_updated")
+
+  @@map("stock_prices")
+  @@index([symbol])
+  @@index([lastUpdated])
+}
+
+// Sprint 3: Trading Session Management
+
+model TradingSession {
+  id                          String      @id @default(cuid())
+  userId                      String      @map("user_id")
+  durationMinutes             Int         @map("duration_minutes")
+  lossLimitAmount             Decimal     @map("loss_limit_amount")
+  lossLimitPercentage         Decimal     @map("loss_limit_percentage")
+  status                      String      @default("pending") // 'pending', 'active', 'completed', 'stopped', 'expired'
+  startTime                   DateTime?   @map("start_time")
+  endTime                     DateTime?   @map("end_time")
+  actualDurationMinutes       Int?        @map("actual_duration_minutes")
+  totalTrades                 Int         @default(0) @map("total_trades")
+  realizedPnl                 Decimal     @default(0.00) @map("realized_pnl")
+  sessionPerformancePercentage Decimal    @default(0.00) @map("session_performance_percentage")
+  terminationReason           String?     @map("termination_reason") // 'completed', 'manual_stop', 'loss_limit', 'time_limit'
+  createdAt                   DateTime    @default(now()) @map("created_at")
+  updatedAt                   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trading_sessions")
+  @@index([userId, status])
+  @@index([status])
+  @@index([userId, createdAt])
 }
