@@ -42,6 +42,9 @@ model User {
   portfolioPerformance  PortfolioPerformance[]
   performanceAttribution PerformanceAttribution[]
   performanceSnapshots  PerformanceSnapshot[]
+  portfolioTargets      PortfolioTarget[]
+  rebalancingRecommendations RebalancingRecommendation[]
+  optimizationResults   OptimizationResult[]
 
   @@map("users")
 }
@@ -356,4 +359,74 @@ model PerformanceSnapshot {
   @@map("performance_snapshots")
   @@unique([userId, period, startDate, endDate])
   @@index([userId, period])
+}
+
+// Portfolio Optimization Models
+
+model PortfolioTarget {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  targetType        String   @map("target_type") // 'asset_class', 'sector', 'symbol'
+  targetName        String   @map("target_name")
+  targetPercentage  Decimal  @map("target_percentage")
+  minPercentage     Decimal? @map("min_percentage")
+  maxPercentage     Decimal? @map("max_percentage")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_targets")
+  @@index([userId])
+  @@index([userId, targetType])
+}
+
+model RebalancingRecommendation {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  recommendationDate   DateTime @map("recommendation_date")
+  symbol               String
+  currentAllocation    Decimal? @map("current_allocation")
+  targetAllocation     Decimal? @map("target_allocation")
+  recommendedAction    String   @map("recommended_action") // 'buy', 'sell', 'hold'
+  recommendedQuantity  Decimal? @map("recommended_quantity")
+  estimatedCost        Decimal? @map("estimated_cost")
+  taxImpact            Decimal? @map("tax_impact")
+  priorityScore        Decimal? @map("priority_score")
+  reasoning            String?
+  status               String   @default("pending") // 'pending', 'executed', 'cancelled'
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("rebalancing_recommendations")
+  @@index([userId])
+  @@index([userId, recommendationDate])
+  @@index([status])
+}
+
+model OptimizationResult {
+  id                    String   @id @default(cuid())
+  userId                String   @map("user_id")
+  optimizationDate      DateTime @map("optimization_date")
+  optimizationType      String   @map("optimization_type") // 'mpt', 'risk_parity', 'black_litterman', 'min_variance'
+  currentSharpeRatio    Decimal? @map("current_sharpe_ratio")
+  optimizedSharpeRatio  Decimal? @map("optimized_sharpe_ratio")
+  currentRisk           Decimal? @map("current_risk")
+  optimizedRisk         Decimal? @map("optimized_risk")
+  improvementScore      Decimal? @map("improvement_score")
+  implementationCost    Decimal? @map("implementation_cost")
+  resultsData           String?  @map("results_data") // JSON string
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("optimization_results")
+  @@index([userId])
+  @@index([userId, optimizationDate])
+  @@index([optimizationType])
 }

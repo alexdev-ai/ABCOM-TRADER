@@ -16,6 +16,8 @@ import decisionEngineRoutes from '@/routes/decisionEngine.routes';
 import performanceMonitoringRoutes from '@/routes/performanceMonitoring.routes';
 import performanceAnalyticsRoutes from './routes/performanceAnalytics.routes';
 import tradeHistoryRoutes from './routes/tradeHistory.routes';
+import portfolioOptimizationRoutes from './routes/portfolioOptimization.routes';
+import tradingSessionRoutes from './routes/tradingSession.routes';
 import riskRoutes from '@/routes/risk.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
@@ -77,6 +79,8 @@ app.use('/api/v1/decision-engine', decisionEngineRoutes);
 app.use('/api/v1/performance', performanceMonitoringRoutes);
 app.use('/api/v1/performance-analytics', performanceAnalyticsRoutes);
 app.use('/api/v1/trade-history', tradeHistoryRoutes);
+app.use('/api/v1/portfolio-optimization', portfolioOptimizationRoutes);
+app.use('/api/v1/trading/sessions', tradingSessionRoutes);
 app.use('/api/v1/risk', riskRoutes);
 
 // 404 handler
@@ -110,6 +114,7 @@ app.listen(PORT, () => {
   console.log(`🔐 Auth API: http://localhost:${PORT}/api/v1/auth`);
   console.log(`💰 Funding API: http://localhost:${PORT}/api/v1/funding`);
   console.log(`📈 Portfolio API: http://localhost:${PORT}/api/v1/portfolio`);
+  console.log(`🔧 Portfolio Optimization API: http://localhost:${PORT}/api/v1/portfolio-optimization`);
   console.log(`📊 Trading API: http://localhost:${PORT}/api/v1/trading`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });

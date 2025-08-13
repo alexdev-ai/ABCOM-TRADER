@@ -1,414 +1,241 @@
 import React, { useState, useEffect } from 'react';
-import { sessionApi, type SessionConfig, type SessionValidation } from '../../services/sessionApi';
-import { profileApi } from '../../services/profileApi';
+import tradingSessionApi, { 
+  CreateSessionRequest, 
+  CanCreateResponse,
+  durationOptions,
+  lossLimitOptions,
+  formatCurrency
+} from '../../services/tradingSessionApi';
 
 interface SessionCreationFormProps {
-  onSessionCreated?: (sessionId: string) => void;
-  onCancel?: () => void;
-  isModal?: boolean;
+  onSessionCreated: (session: any) => void;
+  onCancel: () => void;
 }
 
-const DURATION_OPTIONS = [
-  { minutes: 60, label: '1 Hour', description: 'Perfect for quick trades' },
-  { minutes: 240, label: '4 Hours', description: 'Half-day trading session' },
-  { minutes: 1440, label: '1 Day', description: 'Full day trading' },
-  { minutes: 10080, label: '7 Days', description: 'Week-long session' }
-];
-
-const LOSS_LIMIT_OPTIONS = [
-  { percentage: 10, amount: 9, label: '10% ($9)', description: 'Conservative approach' },
-  { percentage: 20, amount: 18, label: '20% ($18)', description: 'Moderate risk' },
-  { percentage: 30, amount: 27, label: '30% ($27)', description: 'Aggressive strategy' }
-];
-
-export const SessionCreationForm: React.FC<SessionCreationFormProps> = ({
+const SessionCreationForm: React.FC<SessionCreationFormProps> = ({
   onSessionCreated,
-  onCancel,
-  isModal = false
+  onCancel
 }) => {
-  const [config, setConfig] = useState<SessionConfig>({
+  const [formData, setFormData] = useState<CreateSessionRequest>({
     durationMinutes: 60,
-    lossLimitPercentage: 10
+    lossLimitAmount: 9
   });
-  
-  const [showPreview, setShowPreview] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [canCreate, setCanCreate] = useState<CanCreateResponse>({ canCreate: true });
   const [loading, setLoading] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const [validation, setValidation] = useState<SessionValidation | null>(null);
-  const [error, setError] = useState<string>('');
-  const [accountBalance, setAccountBalance] = useState<number>(90);
-  
-  // Load user profile to get account balance
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const profile = await profileApi.getProfile();
-        setAccountBalance(profile.accountBalance);
-        
-        // Update loss limit amounts based on actual balance
-        const newConfig = { ...config };
-        if (config.lossLimitPercentage && !config.lossLimitAmount) {
-          newConfig.lossLimitAmount = (profile.accountBalance * config.lossLimitPercentage) / 100;
-        }
-        setConfig(newConfig);
-      } catch (err) {
-        console.error('Failed to load profile:', err);
-      }
-    };
-    
-    loadProfile();
+    checkCanCreate();
   }, []);
 
-  // Validate configuration when it changes
-  useEffect(() => {
-    if (config.durationMinutes && (config.lossLimitAmount || config.lossLimitPercentage)) {
-      validateConfiguration();
-    }
-  }, [config]);
-
-  const validateConfiguration = async () => {
-    setValidating(true);
+  const checkCanCreate = async () => {
     try {
-      const result = await sessionApi.validateSession(config);
-      setValidation(result);
-      setError(result.isValid ? '' : result.errors.join(', '));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Validation failed');
-      setValidation(null);
-    } finally {
-      setValidating(false);
+      const result = await tradingSessionApi.canCreateSession();
+      setCanCreate(result);
+      if (!result.canCreate) {
+        setError(result.reason || 'Cannot create session');
+      }
+    } catch (error: any) {
+      setError(error.message);
     }
   };
 
-  const handleDurationChange = (minutes: number) => {
-    setConfig(prev => ({ ...prev, durationMinutes: minutes as any }));
-    setShowPreview(false);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canCreate.canCreate) return;
 
-  const handleLossLimitChange = (percentage: number, amount: number) => {
-    const actualAmount = (accountBalance * percentage) / 100;
-    setConfig(prev => ({
-      ...prev,
-      lossLimitPercentage: percentage,
-      lossLimitAmount: actualAmount
-    }));
-    setShowPreview(false);
-  };
-
-  const handleCustomLossLimit = (amount: number) => {
-    const percentage = (amount / accountBalance) * 100;
-    setConfig(prev => ({
-      ...prev,
-      lossLimitAmount: amount,
-      lossLimitPercentage: percentage
-    }));
-    setShowPreview(false);
-  };
-
-  const handlePreview = () => {
-    if (validation?.isValid) {
-      setShowPreview(true);
-    }
-  };
-
-  const handleCreateSession = async () => {
     setLoading(true);
-    setError('');
-    
+    setError(null);
+
     try {
-      const response = await sessionApi.createSession(config);
-      onSessionCreated?.(response.sessionId);
-      setShowConfirmation(false);
-      setShowPreview(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create session');
+      const session = await tradingSessionApi.createSession(formData);
+      onSessionCreated(session);
+    } catch (error: any) {
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateEndTime = () => {
-    const endTime = new Date(Date.now() + config.durationMinutes * 60 * 1000);
-    return endTime.toLocaleString();
+  const handleDurationChange = (durationMinutes: number) => {
+    setFormData(prev => ({ ...prev, durationMinutes }));
   };
 
-  const getDurationLabel = () => {
-    return DURATION_OPTIONS.find(opt => opt.minutes === config.durationMinutes)?.label || 'Custom';
+  const handleLossLimitChange = (lossLimitAmount: number) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      lossLimitAmount,
+      lossLimitPercentage: undefined 
+    }));
   };
 
-  const containerClass = isModal 
-    ? "bg-white rounded-lg shadow-xl p-6 max-w-2xl mx-auto"
-    : "bg-white rounded-lg shadow-md p-6";
+  const handleCustomLossLimit = (value: string) => {
+    const amount = parseFloat(value);
+    if (!isNaN(amount) && amount > 0) {
+      setFormData(prev => ({ 
+        ...prev, 
+        lossLimitAmount: amount,
+        lossLimitPercentage: undefined 
+      }));
+    }
+  };
 
-  return (
-    <div className={containerClass}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Create Trading Session</h2>
-          <p className="text-gray-600 mt-1">Set your time and loss limits for safe trading</p>
-        </div>
-        {onCancel && (
+  if (!canCreate.canCreate) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Cannot Create Session</h3>
+          <p className="text-gray-600 mb-4">{canCreate.reason}</p>
           <button
             onClick={onCancel}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            Close
           </button>
-        )}
-      </div>
-
-      {/* Account Balance Display */}
-      <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-blue-900">Account Balance</span>
-          <span className="text-lg font-bold text-blue-900">${accountBalance.toFixed(2)}</span>
         </div>
       </div>
+    );
+  }
 
-      {/* Duration Selection */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Session Duration
-        </label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {DURATION_OPTIONS.map((option) => (
-            <button
-              key={option.minutes}
-              onClick={() => handleDurationChange(option.minutes)}
-              className={`p-4 border-2 rounded-lg text-left transition-all ${
-                config.durationMinutes === option.minutes
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="font-medium text-gray-900">{option.label}</div>
-              <div className="text-sm text-gray-600">{option.description}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Loss Limit Selection */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Loss Limit
-        </label>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          {LOSS_LIMIT_OPTIONS.map((option) => {
-            const actualAmount = (accountBalance * option.percentage) / 100;
-            const isSelected = config.lossLimitPercentage === option.percentage;
-            
-            return (
-              <button
-                key={option.percentage}
-                onClick={() => handleLossLimitChange(option.percentage, option.amount)}
-                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-medium text-gray-900">
-                  {option.percentage}% (${actualAmount.toFixed(2)})
-                </div>
-                <div className="text-sm text-gray-600">{option.description}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Custom Loss Limit */}
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Custom Loss Limit ($)
-          </label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="number"
-              min="9"
-              max={accountBalance}
-              step="0.01"
-              value={config.lossLimitAmount || ''}
-              onChange={(e) => {
-                const amount = parseFloat(e.target.value) || 0;
-                if (amount >= 9 && amount <= accountBalance) {
-                  handleCustomLossLimit(amount);
-                }
-              }}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter custom amount"
-            />
-            <span className="text-sm text-gray-600">
-              ({((config.lossLimitAmount || 0) / accountBalance * 100).toFixed(1)}%)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Validation Results */}
-      {validating && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-          <div className="flex items-center">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
-            <span className="text-sm text-yellow-800">Validating configuration...</span>
-          </div>
-        </div>
-      )}
-
-      {validation && !validating && (
-        <div className="mb-4">
-          {validation.warnings.length > 0 && (
-            <div className="mb-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-              <div className="text-sm font-medium text-yellow-800 mb-1">Warnings:</div>
-              {validation.warnings.map((warning, index) => (
-                <div key={index} className="text-sm text-yellow-700">• {warning}</div>
-              ))}
-            </div>
-          )}
-          
-          {!validation.isValid && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-              <div className="text-sm font-medium text-red-800 mb-1">Validation Errors:</div>
-              {validation.errors.map((error, index) => (
-                <div key={index} className="text-sm text-red-700">• {error}</div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <div className="text-sm text-red-700">{error}</div>
-        </div>
-      )}
-
-      {/* Preview Button */}
-      <div className="flex justify-between items-center">
-        <div className="text-sm text-gray-600">
-          {validation?.isValid ? (
-            <span className="text-green-600 flex items-center">
-              <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Configuration valid
-            </span>
-          ) : (
-            'Please fix validation errors'
-          )}
-        </div>
-        
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold text-gray-900">Create Trading Session</h2>
         <button
-          onClick={handlePreview}
-          disabled={!validation?.isValid || validating}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={onCancel}
+          className="text-gray-400 hover:text-gray-600"
         >
-          Preview Session
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
       </div>
 
-      {/* Session Preview Modal */}
-      {showPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Session Preview</h3>
-            
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Duration:</span>
-                <span className="font-medium">{getDurationLabel()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Loss Limit:</span>
-                <span className="font-medium">
-                  ${config.lossLimitAmount?.toFixed(2)} ({config.lossLimitPercentage?.toFixed(1)}%)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Estimated End Time:</span>
-                <span className="font-medium">{calculateEndTime()}</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md mb-6">
-              <div className="text-sm text-blue-800">
-                <strong>Important:</strong> Your session will automatically stop when the time limit is reached 
-                or when your losses exceed ${config.lossLimitAmount?.toFixed(2)}.
-              </div>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowPreview(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Duration Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Session Duration
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {durationOptions.map((option) => (
+              <div
+                key={option.value}
+                onClick={() => handleDurationChange(option.value)}
+                className={`
+                  p-4 border rounded-lg cursor-pointer transition-colors
+                  ${formData.durationMinutes === option.value
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                  }
+                `}
               >
-                Back to Edit
-              </button>
-              <button
-                onClick={() => {
-                  setShowPreview(false);
-                  setShowConfirmation(true);
-                }}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                <div className="font-medium text-gray-900">{option.label}</div>
+                <div className="text-sm text-gray-500">{option.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Loss Limit Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Loss Limit
+          </label>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            {lossLimitOptions.map((option) => (
+              <div
+                key={option.value}
+                onClick={() => handleLossLimitChange(option.value)}
+                className={`
+                  p-3 border rounded-lg cursor-pointer text-center transition-colors
+                  ${formData.lossLimitAmount === option.value
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                  }
+                `}
               >
-                Confirm & Create
-              </button>
+                <div className="font-medium text-gray-900">{option.label}</div>
+                <div className="text-xs text-gray-500">{option.percentage}%</div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Custom Loss Limit */}
+          <div className="mt-3">
+            <label className="block text-sm text-gray-600 mb-2">Custom Amount</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+              <input
+                type="number"
+                min="1"
+                max="45"
+                step="0.01"
+                placeholder="Enter custom amount"
+                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                onChange={(e) => handleCustomLossLimit(e.target.value)}
+              />
             </div>
           </div>
         </div>
-      )}
 
-      {/* Final Confirmation Modal */}
-      {showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Confirm Session Creation</h3>
-            
-            <div className="mb-6">
-              <p className="text-gray-700 mb-4">
-                Are you ready to create this trading session? Once created, the session will be active 
-                and your trading will be subject to the configured limits.
-              </p>
-              
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <div className="text-sm text-yellow-800">
-                  <strong>Remember:</strong> You can only have one active session at a time. 
-                  You can manually stop the session early if needed.
-                </div>
-              </div>
+        {/* Session Summary */}
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h3 className="font-medium text-gray-900 mb-3">Session Summary</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Duration:</span>
+              <span className="font-medium">
+                {durationOptions.find(opt => opt.value === formData.durationMinutes)?.label}
+              </span>
             </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowConfirmation(false)}
-                disabled={loading}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateSession}
-                disabled={loading}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Creating...
-                  </>
-                ) : (
-                  'Create Session'
-                )}
-              </button>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Loss Limit:</span>
+              <span className="font-medium">
+                {formatCurrency(formData.lossLimitAmount || 0)}
+              </span>
             </div>
           </div>
         </div>
-      )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-3">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-red-800">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex space-x-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !canCreate.canCreate}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Creating...' : 'Create Session'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
