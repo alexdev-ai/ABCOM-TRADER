@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { sessionAnalyticsApi, DashboardData, SessionAnalytics, RealTimeSessionMetrics } from '../services/sessionAnalyticsApi';
 import PerformanceChart from '../components/analytics/PerformanceChart';
+import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { useRealTimeSessionStatus, useRealTimeNotifications, useRealTimeMarketData } from '../hooks/useWebSocket';
+import ConnectionStatus from '../components/realtime/ConnectionStatus';
+import MarketDataWidget from '../components/realtime/MarketDataWidget';
 
 interface AnalyticsCardProps {
   title: string;
@@ -263,6 +267,11 @@ const SessionAnalyticsPage: React.FC = () => {
   // Mock user ID - in real app this would come from auth context
   const userId = 'user-123';
 
+  // WebSocket integration
+  const { connectionState, isConnected } = useWebSocketContext();
+  const { notifications } = useRealTimeNotifications();
+  const marketData = useRealTimeMarketData(['SPY', 'QQQ', 'AAPL', 'MSFT', 'TSLA']);
+
   const fetchDashboardData = useCallback(async () => {
     try {
       setError(null);
@@ -280,16 +289,27 @@ const SessionAnalyticsPage: React.FC = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  // Auto-refresh real-time data every 30 seconds
+  // Update analytics when WebSocket connection is established
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (dashboardData?.realTimeMetrics && dashboardData.realTimeMetrics.length > 0) {
-        fetchDashboardData();
-      }
-    }, 30000);
+    if (isConnected) {
+      console.log('WebSocket connected, refreshing dashboard data');
+      fetchDashboardData();
+    }
+  }, [isConnected, fetchDashboardData]);
 
-    return () => clearInterval(interval);
-  }, [fetchDashboardData, dashboardData?.realTimeMetrics]);
+  // Listen for analytics update notifications
+  useEffect(() => {
+    const analyticsUpdates = notifications.filter(n => 
+      n.title === 'Analytics Updated' || 
+      n.title === 'Performance Milestone' ||
+      n.title === 'Session Completed'
+    );
+    
+    if (analyticsUpdates.length > 0) {
+      console.log('Analytics update notification received, refreshing data');
+      fetchDashboardData();
+    }
+  }, [notifications, fetchDashboardData]);
 
   if (loading) {
     return (
@@ -336,6 +356,8 @@ const SessionAnalyticsPage: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <ConnectionStatus connectionState={connectionState} />
+              
               <select
                 value={period}
                 onChange={(e) => setPeriod(e.target.value as any)}
@@ -362,6 +384,11 @@ const SessionAnalyticsPage: React.FC = () => {
         {/* Real-time metrics section */}
         <div className="mb-8">
           <RealTimeMetrics metrics={dashboardData?.realTimeMetrics || []} />
+        </div>
+
+        {/* Live market data */}
+        <div className="mb-8">
+          <MarketDataWidget />
         </div>
 
         {analytics ? (
