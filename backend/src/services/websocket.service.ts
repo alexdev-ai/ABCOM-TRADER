@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { websocketPerformanceService } from './websocketPerformance.service';
 
 // WebSocket Message Types
 export type WebSocketMessage = 
@@ -163,6 +164,9 @@ export class WebSocketService {
 
     this.connections.set(connectionId, connection);
 
+    // Record connection in performance service
+    websocketPerformanceService.recordConnection(connectionId, userId);
+
     // Auto-subscribe to user-specific channel
     await this.subscribeToChannel(connectionId, `user:${userId}`);
 
@@ -256,6 +260,9 @@ export class WebSocketService {
       }
     }
 
+    // Record disconnection in performance service
+    websocketPerformanceService.recordDisconnection(connectionId);
+
     // Remove connection
     this.connections.delete(connectionId);
   }
@@ -312,11 +319,23 @@ export class WebSocketService {
       return false;
     }
 
+    const startTime = Date.now();
+    
     try {
-      connection.socket.send(JSON.stringify(message));
+      const messageStr = JSON.stringify(message);
+      const messageSize = Buffer.byteLength(messageStr, 'utf8');
+      
+      connection.socket.send(messageStr);
+      
+      // Record performance metrics
+      const latency = Date.now() - startTime;
+      websocketPerformanceService.recordMessageSent(connectionId, messageSize);
+      websocketPerformanceService.recordLatency(connectionId, latency);
+      
       return true;
     } catch (error) {
       console.error(`Error sending message to ${connectionId}:`, error);
+      websocketPerformanceService.recordError(connectionId, error as Error);
       await this.queueMessage(connectionId, message);
       return false;
     }
