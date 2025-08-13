@@ -3,16 +3,20 @@ import { RegistrationForm } from './components/auth/RegistrationForm';
 import LoginForm from './components/auth/LoginForm';
 import { FundingPage } from './pages/FundingPage';
 import PortfolioPage from './pages/PortfolioPage';
+import EnhancedPortfolioPage from './pages/EnhancedPortfolioPage';
 import TradingPage from './pages/TradingPage';
 import SessionsPage from './pages/SessionsPage';
+import TradingSessionsPage from './pages/TradingSessionsPage';
+import TradeHistoryPage from './pages/TradeHistoryPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import PerformanceAnalyticsPage from './pages/PerformanceAnalyticsPage';
+import PortfolioOptimizationPage from './pages/PortfolioOptimizationPage';
 import { useAuthStore } from './stores/authStore';
 import { onboardingApi } from './services/onboardingApi';
 
 type AuthView = 'login' | 'registration' | 'onboarding' | 'dashboard';
-type DashboardView = 'overview' | 'portfolio' | 'trading' | 'sessions' | 'funding' | 'profile' | 'analytics';
+type DashboardView = 'overview' | 'portfolio' | 'enhanced-portfolio' | 'trading' | 'trade-history' | 'sessions' | 'trading-sessions' | 'funding' | 'profile' | 'analytics' | 'optimization';
 
 function App() {
   const [view, setView] = useState<AuthView>('login');
@@ -120,10 +124,20 @@ function App() {
         {/* Dashboard Navigation Tabs */}
         <div className="bg-white border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <nav className="flex space-x-8">
+            <nav className="flex space-x-4 overflow-x-auto">
+              <button
+                onClick={() => setDashboardView('overview')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'overview'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                🏠 Overview
+              </button>
               <button
                 onClick={() => setDashboardView('portfolio')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   dashboardView === 'portfolio'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -132,28 +146,78 @@ function App() {
                 📊 Portfolio
               </button>
               <button
+                onClick={() => setDashboardView('enhanced-portfolio')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'enhanced-portfolio'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📈 Enhanced Portfolio
+              </button>
+              <button
                 onClick={() => setDashboardView('trading')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   dashboardView === 'trading'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                📈 Trading
+                💹 Trading
+              </button>
+              <button
+                onClick={() => setDashboardView('trade-history')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'trade-history'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📋 Trade History
+              </button>
+              <button
+                onClick={() => setDashboardView('trading-sessions')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'trading-sessions'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                ⏰ Trading Sessions
               </button>
               <button
                 onClick={() => setDashboardView('sessions')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   dashboardView === 'sessions'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                ⏱️ Sessions
+                📅 Sessions
+              </button>
+              <button
+                onClick={() => setDashboardView('analytics')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'analytics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📊 Analytics
+              </button>
+              <button
+                onClick={() => setDashboardView('optimization')}
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
+                  dashboardView === 'optimization'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                🎯 Optimization
               </button>
               <button
                 onClick={() => setDashboardView('funding')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   dashboardView === 'funding'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -163,7 +227,7 @@ function App() {
               </button>
               <button
                 onClick={() => setDashboardView('profile')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`py-4 px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   dashboardView === 'profile'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -171,37 +235,21 @@ function App() {
               >
                 👤 Profile
               </button>
-              <button
-                onClick={() => setDashboardView('analytics')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  dashboardView === 'analytics'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                📈 Analytics
-              </button>
-              <button
-                onClick={() => setDashboardView('overview')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  dashboardView === 'overview'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                🏠 Overview
-              </button>
             </nav>
           </div>
         </div>
 
         {/* Dashboard Content */}
         {dashboardView === 'portfolio' && <PortfolioPage />}
+        {dashboardView === 'enhanced-portfolio' && <EnhancedPortfolioPage />}
         {dashboardView === 'trading' && <TradingPage />}
+        {dashboardView === 'trade-history' && <TradeHistoryPage />}
         {dashboardView === 'sessions' && <SessionsPage />}
+        {dashboardView === 'trading-sessions' && <TradingSessionsPage />}
         {dashboardView === 'funding' && <FundingPage />}
         {dashboardView === 'profile' && <ProfilePage />}
         {dashboardView === 'analytics' && <PerformanceAnalyticsPage />}
+        {dashboardView === 'optimization' && <PortfolioOptimizationPage />}
         
         {dashboardView === 'overview' && (
           <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -241,16 +289,34 @@ function App() {
                       📊 View Portfolio
                     </button>
                     <button 
+                      onClick={() => setDashboardView('trading')}
+                      className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      💹 Start Trading
+                    </button>
+                    <button 
+                      onClick={() => setDashboardView('trading-sessions')}
+                      className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      ⏰ New Trading Session
+                    </button>
+                    <button 
+                      onClick={() => setDashboardView('optimization')}
+                      className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      🎯 Optimize Portfolio
+                    </button>
+                    <button 
+                      onClick={() => setDashboardView('analytics')}
+                      className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                    >
+                      📊 View Analytics
+                    </button>
+                    <button 
                       onClick={() => setDashboardView('funding')}
                       className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
                     >
                       💰 Add Funds
-                    </button>
-                    <button className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors">
-                      📈 Place Trade
-                    </button>
-                    <button className="w-full text-left px-3 py-2 text-sm bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors">
-                      📋 Transaction History
                     </button>
                   </div>
                 </div>
