@@ -1,410 +1,413 @@
-import { PrismaClient, TradingSession, User } from '@prisma/client';
-import { Decimal } from 'decimal.js';
+import { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 const prisma = new PrismaClient();
 
-export interface CreateSessionRequest {
+// Session status constants
+export const SessionStatus = {
+  PENDING: 'PENDING',
+  ACTIVE: 'ACTIVE',
+  EXPIRED: 'EXPIRED',
+  STOPPED: 'STOPPED',
+  COMPLETED: 'COMPLETED',
+  EMERGENCY_STOPPED: 'EMERGENCY_STOPPED'
+} as const;
+
+export const SessionEventType = {
+  SESSION_CREATED: 'SESSION_CREATED',
+  SESSION_STARTED: 'SESSION_STARTED',
+  SESSION_ENDED: 'SESSION_ENDED',
+  LOSS_LIMIT_WARNING: 'LOSS_LIMIT_WARNING',
+  TIME_LIMIT_WARNING: 'TIME_LIMIT_WARNING',
+  EMERGENCY_STOP: 'EMERGENCY_STOP',
+  ALGORITHM_DECISION: 'ALGORITHM_DECISION'
+} as const;
+
+export interface SessionCreationData {
+  userId: string;
   durationMinutes: number;
-  lossLimitAmount?: number;
-  lossLimitPercentage?: number;
+  lossLimitAmount: number;
 }
 
-export interface SessionSummary {
-  id: string;
-  status: string;
-  durationMinutes: number;
-  remainingMinutes: number;
-  lossLimitAmount: number;
-  lossLimitPercentage: number;
-  currentPnl: number;
-  totalTrades: number;
-  startTime: Date | null;
-  endTime: Date | null;
-  progress: {
-    timeElapsed: number;
-    timeRemaining: number;
-    lossLimitUsed: number;
-  };
+export interface SessionUpdateData {
+  currentPnL?: number;
+  tradeCount?: number;
 }
 
 export class TradingSessionService {
-  /**
-   * Create a new trading session with time and loss limits
-   */
-  static async createSession(
-    userId: string,
-    sessionData: CreateSessionRequest
-  ): Promise<TradingSession> {
-    // Check if user already has an active session
-    const activeSession = await this.getActiveSession(userId);
-    if (activeSession) {
-      throw new Error('USER_HAS_ACTIVE_SESSION');
+  private static instance: TradingSessionService;
+
+  private constructor() {}
+
+  public static getInstance(): TradingSessionService {
+    if (!TradingSessionService.instance) {
+      TradingSessionService.instance = new TradingSessionService();
     }
-
-    // Get user data for validation
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { accountBalance: true, riskTolerance: true }
-    });
-
-    if (!user) {
-      throw new Error('USER_NOT_FOUND');
-    }
-
-    // Validate session parameters
-    this.validateSessionParameters(sessionData, user);
-
-    // Calculate loss limits
-    const { lossLimitAmount, lossLimitPercentage } = this.calculateLossLimits(
-      sessionData,
-      user.accountBalance
-    );
-
-    // Create the session
-    const session = await prisma.tradingSession.create({
-      data: {
-        userId,
-        durationMinutes: sessionData.durationMinutes,
-        lossLimitAmount: new Decimal(lossLimitAmount),
-        lossLimitPercentage: new Decimal(lossLimitPercentage),
-        status: 'pending'
-      }
-    });
-
-    return session;
+    return TradingSessionService.instance;
   }
 
   /**
-   * Activate a pending session
+   * Create a new trading session
    */
-  static async activateSession(sessionId: string, userId: string): Promise<TradingSession> {
-    const session = await prisma.tradingSession.findFirst({
-      where: {
-        id: sessionId,
-        userId,
-        status: 'pending'
-      }
-    });
+  async createSession(sessionData: SessionCreationData) {
+    const { userId, durationMinutes, lossLimitAmount } = sessionData;
 
-    if (!session) {
-      throw new Error('SESSION_NOT_FOUND_OR_NOT_PENDING');
+    try {
+      // Get user data
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { 
+          tradingSessions: { 
+            where: { 
+              status: { in: ['PENDING', 'ACTIVE'] } 
+            } 
+          } 
+        }
+      });
+
+      if (!user) {
+        throw new Error('USER_NOT_FOUND');
+      }
+
+      // Check for existing active session
+      if (user.tradingSessions.length > 0) {
+        throw new Error('ACTIVE_SESSION_EXISTS');
+      }
+
+      // Validate session parameters
+      const validDurations = [60, 240, 1440, 10080]; // 1h, 4h, 24h, 7d
+      if (!validDurations.includes(durationMinutes)) {
+        throw new Error('INVALID_DURATION');
+      }
+
+      // Validate loss limit
+      const accountBalance = user.accountBalance.toNumber();
+      const maxLossLimit = accountBalance * 0.30; // 30% max
+
+      if (lossLimitAmount > maxLossLimit) {
+        throw new Error(`LOSS_LIMIT_TOO_HIGH: Max allowed is $${maxLossLimit.toFixed(2)}`);
+      }
+
+      if (accountBalance < lossLimitAmount) {
+        throw new Error('INSUFFICIENT_BALANCE');
+      }
+
+      // Calculate end time and loss limit percentage
+      const endTime = new Date(Date.now() + durationMinutes * 60 * 1000);
+      const lossLimitPercent = (lossLimitAmount / accountBalance) * 100;
+
+      // Create session in transaction
+      const session = await prisma.$transaction(async (tx) => {
+        const newSession = await tx.tradingSession.create({
+          data: {
+            userId,
+            durationMinutes,
+            lossLimitAmount: new Decimal(lossLimitAmount),
+            lossLimitPercentage: new Decimal(lossLimitPercent),
+            status: SessionStatus.PENDING,
+            endTime
+          }
+        });
+
+        // TODO: Add session event logging when SessionEvent model is available
+
+        return newSession;
+      });
+
+      console.log(`Trading session created: ${session.id} for user ${userId}`);
+      return session;
+
+    } catch (error) {
+      console.error('Session creation error:', error);
+      throw error;
     }
-
-    const now = new Date();
-    const endTime = new Date(now.getTime() + session.durationMinutes * 60 * 1000);
-
-    const activatedSession = await prisma.tradingSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'active',
-        startTime: now,
-        endTime
-      }
-    });
-
-    return activatedSession;
   }
 
   /**
-   * Get active session for user
+   * Start an active session
    */
-  static async getActiveSession(userId: string): Promise<TradingSession | null> {
-    const session = await prisma.tradingSession.findFirst({
-      where: {
-        userId,
-        status: { in: ['pending', 'active'] }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+  async startSession(sessionId: string, userId: string) {
+    try {
+      const session = await prisma.tradingSession.findFirst({
+        where: {
+          id: sessionId,
+          userId,
+          status: SessionStatus.PENDING
+        }
+      });
 
-    // Check if session has expired
-    if (session && session.status === 'active' && session.endTime && new Date() > session.endTime) {
-      await this.expireSession(session.id);
-      return null;
-    }
-
-    return session;
-  }
-
-  /**
-   * Get session summary with real-time calculations
-   */
-  static async getSessionSummary(sessionId: string, userId: string): Promise<SessionSummary> {
-    const session = await prisma.tradingSession.findFirst({
-      where: { id: sessionId, userId }
-    });
-
-    if (!session) {
-      throw new Error('SESSION_NOT_FOUND');
-    }
-
-    const now = new Date();
-    let remainingMinutes = 0;
-    let timeElapsed = 0;
-    let timeRemaining = 100;
-
-    if (session.startTime && session.endTime) {
-      const totalDuration = session.endTime.getTime() - session.startTime.getTime();
-      const elapsed = now.getTime() - session.startTime.getTime();
-      
-      timeElapsed = Math.max(0, Math.min(100, (elapsed / totalDuration) * 100));
-      timeRemaining = Math.max(0, 100 - timeElapsed);
-      remainingMinutes = Math.max(0, Math.ceil((session.endTime.getTime() - now.getTime()) / (1000 * 60)));
-    } else if (session.status === 'pending') {
-      remainingMinutes = session.durationMinutes;
-      timeRemaining = 100;
-    }
-
-    // Calculate loss limit usage
-    const currentPnl = parseFloat(session.realizedPnl.toString());
-    const lossLimitAmount = parseFloat(session.lossLimitAmount.toString());
-    const lossLimitUsed = lossLimitAmount > 0 ? Math.max(0, (-currentPnl / lossLimitAmount) * 100) : 0;
-
-    return {
-      id: session.id,
-      status: session.status,
-      durationMinutes: session.durationMinutes,
-      remainingMinutes,
-      lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
-      lossLimitPercentage: parseFloat(session.lossLimitPercentage.toString()),
-      currentPnl,
-      totalTrades: session.totalTrades,
-      startTime: session.startTime || null,
-      endTime: session.endTime || null,
-      progress: {
-        timeElapsed,
-        timeRemaining,
-        lossLimitUsed: Math.min(100, lossLimitUsed)
+      if (!session) {
+        throw new Error('SESSION_NOT_FOUND');
       }
-    };
+
+      // Start the session
+      const updatedSession = await prisma.$transaction(async (tx) => {
+        const updated = await tx.tradingSession.update({
+          where: { id: sessionId },
+          data: {
+            status: SessionStatus.ACTIVE,
+            startTime: new Date()
+          }
+        });
+
+        // TODO: Add session start event logging when SessionEvent model is available
+
+        return updated;
+      });
+
+      console.log(`Trading session started: ${sessionId}`);
+      return updatedSession;
+
+    } catch (error) {
+      console.error('Session start error:', error);
+      throw error;
+    }
   }
 
   /**
    * Stop a session manually
    */
-  static async stopSession(sessionId: string, userId: string): Promise<TradingSession> {
-    const session = await prisma.tradingSession.findFirst({
-      where: {
-        id: sessionId,
-        userId,
-        status: { in: ['pending', 'active'] }
+  async stopSession(sessionId: string, userId: string, reason: string = 'manual_stop') {
+    try {
+      const session = await prisma.tradingSession.findFirst({
+        where: {
+          id: sessionId,
+          userId,
+          status: { in: [SessionStatus.PENDING, SessionStatus.ACTIVE] }
+        }
+      });
+
+      if (!session) {
+        throw new Error('SESSION_NOT_FOUND');
       }
-    });
 
-    if (!session) {
-      throw new Error('SESSION_NOT_FOUND_OR_NOT_ACTIVE');
+      // Stop the session
+      const updatedSession = await prisma.$transaction(async (tx) => {
+        const updated = await tx.tradingSession.update({
+          where: { id: sessionId },
+          data: {
+            status: SessionStatus.STOPPED,
+            terminationReason: reason
+          }
+        });
+
+        // TODO: Add session end event logging when SessionEvent model is available
+
+        return updated;
+      });
+
+      console.log(`Trading session stopped: ${sessionId}, reason: ${reason}`);
+      return updatedSession;
+
+    } catch (error) {
+      console.error('Session stop error:', error);
+      throw error;
     }
-
-    const now = new Date();
-    let actualDurationMinutes = 0;
-
-    if (session.startTime) {
-      actualDurationMinutes = Math.ceil((now.getTime() - session.startTime.getTime()) / (1000 * 60));
-    }
-
-    const stoppedSession = await prisma.tradingSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'stopped',
-        endTime: now,
-        actualDurationMinutes,
-        terminationReason: 'manual_stop'
-      }
-    });
-
-    return stoppedSession;
   }
 
   /**
-   * Expire a session that has reached its time limit
+   * Emergency stop a session
    */
-  static async expireSession(sessionId: string): Promise<TradingSession> {
-    const session = await prisma.tradingSession.findUnique({
-      where: { id: sessionId }
-    });
+  async emergencyStopSession(sessionId: string, userId: string) {
+    try {
+      const session = await prisma.tradingSession.findFirst({
+        where: {
+          id: sessionId,
+          userId,
+          status: { in: [SessionStatus.PENDING, SessionStatus.ACTIVE] }
+        }
+      });
 
-    if (!session) {
-      throw new Error('SESSION_NOT_FOUND');
-    }
-
-    const now = new Date();
-    let actualDurationMinutes = session.durationMinutes;
-
-    if (session.startTime) {
-      actualDurationMinutes = Math.ceil((now.getTime() - session.startTime.getTime()) / (1000 * 60));
-    }
-
-    const expiredSession = await prisma.tradingSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'expired',
-        endTime: now,
-        actualDurationMinutes,
-        terminationReason: 'time_limit'
+      if (!session) {
+        throw new Error('SESSION_NOT_FOUND');
       }
-    });
 
-    return expiredSession;
+      // Emergency stop the session
+      const updatedSession = await prisma.$transaction(async (tx) => {
+        const updated = await tx.tradingSession.update({
+          where: { id: sessionId },
+          data: {
+            status: SessionStatus.EMERGENCY_STOPPED,
+            terminationReason: 'emergency_stop'
+          }
+        });
+
+        // TODO: Add emergency stop event logging when SessionEvent model is available
+
+        return updated;
+      });
+
+      console.log(`EMERGENCY STOP: Session ${sessionId} stopped by user ${userId}`);
+      return updatedSession;
+
+    } catch (error) {
+      console.error('Emergency stop error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get active session for user
+   */
+  async getActiveSession(userId: string) {
+    try {
+      const session = await prisma.tradingSession.findFirst({
+        where: {
+          userId,
+          status: { in: [SessionStatus.PENDING, SessionStatus.ACTIVE] }
+        }
+      });
+
+      return session;
+    } catch (error) {
+      console.error('Get active session error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update session performance data (using legacy fields)
+   */
+  async updateSessionPerformance(sessionId: string, updateData: SessionUpdateData) {
+    try {
+      const session = await prisma.tradingSession.findUnique({
+        where: { id: sessionId }
+      });
+
+      if (!session || session.status !== SessionStatus.ACTIVE) {
+        return; // Skip update if session is not active
+      }
+
+      // Update session data using legacy fields
+      const updateFields: any = {
+        updatedAt: new Date()
+      };
+      
+      if (updateData.currentPnL !== undefined) {
+        updateFields.realizedPnl = new Decimal(updateData.currentPnL);
+      }
+      
+      if (updateData.tradeCount !== undefined) {
+        updateFields.totalTrades = updateData.tradeCount;
+      }
+
+      await prisma.tradingSession.update({
+        where: { id: sessionId },
+        data: updateFields
+      });
+
+      // Check loss limit using realized PnL
+      if (updateData.currentPnL !== undefined) {
+        const currentLoss = Math.abs(Math.min(0, updateData.currentPnL));
+        const lossLimitReached = currentLoss >= session.lossLimitAmount.toNumber();
+
+        // Check if approaching loss limit (80%)
+        const lossWarningThreshold = session.lossLimitAmount.toNumber() * 0.8;
+        const shouldWarnLossLimit = currentLoss >= lossWarningThreshold && currentLoss < session.lossLimitAmount.toNumber();
+
+        // Handle loss limit warning
+        if (shouldWarnLossLimit) {
+          // TODO: Add loss limit warning event logging when SessionEvent model is available
+          console.log(`Loss limit warning for session ${sessionId}: ${(currentLoss / session.lossLimitAmount.toNumber()) * 100}% used`);
+        }
+
+        // Handle loss limit reached
+        if (lossLimitReached) {
+          await this.stopSession(sessionId, session.userId, 'loss_limit_reached');
+        }
+      }
+
+    } catch (error) {
+      console.error('Update session performance error:', error);
+    }
+  }
+
+  /**
+   * Get session statistics
+   */
+  async getSessionStats(userId?: string) {
+    try {
+      const whereClause = userId ? { userId } : {};
+
+      const stats = await prisma.tradingSession.aggregate({
+        where: whereClause,
+        _count: true,
+        _avg: {
+          durationMinutes: true,
+          realizedPnl: true,
+          totalTrades: true
+        }
+      });
+
+      const statusCounts = await prisma.tradingSession.groupBy({
+        by: ['status'],
+        where: whereClause,
+        _count: {
+          status: true
+        }
+      });
+
+      return {
+        totalSessions: stats._count,
+        averageDuration: stats._avg.durationMinutes,
+        averagePnL: stats._avg.realizedPnl,
+        averageTradeCount: stats._avg.totalTrades,
+        statusBreakdown: statusCounts.reduce((acc, item) => {
+          acc[item.status] = item._count.status;
+          return acc;
+        }, {} as Record<string, number>)
+      };
+    } catch (error) {
+      console.error('Get session stats error:', error);
+      throw error;
+    }
   }
 
   /**
    * Get session history for user
    */
-  static async getSessionHistory(
-    userId: string,
-    limit: number = 10,
-    offset: number = 0
-  ): Promise<TradingSession[]> {
-    return await prisma.tradingSession.findMany({
-      where: {
-        userId,
-        status: { in: ['completed', 'stopped', 'expired'] }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset
-    });
-  }
-
-  /**
-   * Update session P&L and trade count
-   */
-  static async updateSessionPerformance(
-    sessionId: string,
-    pnlChange: number,
-    tradeCount: number = 1
-  ): Promise<void> {
-    const session = await prisma.tradingSession.findUnique({
-      where: { id: sessionId }
-    });
-
-    if (!session || session.status !== 'active') {
-      return;
-    }
-
-    const newPnl = new Decimal(session.realizedPnl).plus(pnlChange);
-    const newTradeCount = session.totalTrades + tradeCount;
-
-    // Check if loss limit has been reached
-    const lossLimitReached = newPnl.lessThan(new Decimal(session.lossLimitAmount).neg());
-
-    if (lossLimitReached) {
-      // Stop session due to loss limit
-      await prisma.tradingSession.update({
-        where: { id: sessionId },
-        data: {
-          realizedPnl: newPnl,
-          totalTrades: newTradeCount,
-          status: 'stopped',
-          endTime: new Date(),
-          terminationReason: 'loss_limit'
-        }
+  async getSessionHistory(userId: string, limit: number = 10, offset: number = 0) {
+    try {
+      const sessions = await prisma.tradingSession.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset
       });
-    } else {
-      // Update session performance
-      await prisma.tradingSession.update({
-        where: { id: sessionId },
-        data: {
-          realizedPnl: newPnl,
-          totalTrades: newTradeCount
-        }
+
+      return sessions;
+    } catch (error) {
+      console.error('Get session history error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if session is expired and update status
+   */
+  async checkSessionExpiration(sessionId: string) {
+    try {
+      const session = await prisma.tradingSession.findUnique({
+        where: { id: sessionId }
       });
+
+      if (!session || session.status !== SessionStatus.ACTIVE) {
+        return false;
+      }
+
+      if (session.endTime && new Date() > session.endTime) {
+        await this.stopSession(sessionId, session.userId, 'time_expired');
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Check session expiration error:', error);
+      return false;
     }
-  }
-
-  /**
-   * Validate session parameters
-   */
-  private static validateSessionParameters(
-    sessionData: CreateSessionRequest,
-    user: { accountBalance: Decimal; riskTolerance: string }
-  ): void {
-    const { durationMinutes, lossLimitAmount, lossLimitPercentage } = sessionData;
-
-    // Validate duration (1 hour to 7 days)
-    const validDurations = [60, 240, 1440, 10080]; // 1h, 4h, 24h, 7d
-    if (!validDurations.includes(durationMinutes)) {
-      throw new Error('INVALID_DURATION');
-    }
-
-    // Validate loss limits
-    if (!lossLimitAmount && !lossLimitPercentage) {
-      throw new Error('LOSS_LIMIT_REQUIRED');
-    }
-
-    const accountBalance = parseFloat(user.accountBalance.toString());
-    
-    if (lossLimitAmount && lossLimitAmount > accountBalance * 0.5) {
-      throw new Error('LOSS_LIMIT_TOO_HIGH');
-    }
-
-    if (lossLimitPercentage && lossLimitPercentage > 50) {
-      throw new Error('LOSS_PERCENTAGE_TOO_HIGH');
-    }
-  }
-
-  /**
-   * Calculate loss limits based on input and account balance
-   */
-  private static calculateLossLimits(
-    sessionData: CreateSessionRequest,
-    accountBalance: Decimal
-  ): { lossLimitAmount: number; lossLimitPercentage: number } {
-    const balance = parseFloat(accountBalance.toString());
-
-    let lossLimitAmount: number;
-    let lossLimitPercentage: number;
-
-    if (sessionData.lossLimitAmount) {
-      lossLimitAmount = sessionData.lossLimitAmount;
-      lossLimitPercentage = (lossLimitAmount / balance) * 100;
-    } else if (sessionData.lossLimitPercentage) {
-      lossLimitPercentage = sessionData.lossLimitPercentage;
-      lossLimitAmount = (balance * lossLimitPercentage) / 100;
-    } else {
-      // Default to 10% of account balance
-      lossLimitPercentage = 10;
-      lossLimitAmount = (balance * 10) / 100;
-    }
-
-    return { lossLimitAmount, lossLimitPercentage };
-  }
-
-  /**
-   * Check if user can create a new session
-   */
-  static async canCreateSession(userId: string): Promise<{ canCreate: boolean; reason?: string }> {
-    const activeSession = await this.getActiveSession(userId);
-    
-    if (activeSession) {
-      return {
-        canCreate: false,
-        reason: 'User already has an active session'
-      };
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { accountBalance: true, isActive: true }
-    });
-
-    if (!user || !user.isActive) {
-      return {
-        canCreate: false,
-        reason: 'User account is inactive'
-      };
-    }
-
-    const minBalance = 90; // $90 minimum
-    if (parseFloat(user.accountBalance.toString()) < minBalance) {
-      return {
-        canCreate: false,
-        reason: 'Insufficient account balance (minimum $90 required)'
-      };
-    }
-
-    return { canCreate: true };
   }
 }
 
-export default TradingSessionService;
+// Export singleton instance
+export const tradingSessionService = TradingSessionService.getInstance();
+export default tradingSessionService;

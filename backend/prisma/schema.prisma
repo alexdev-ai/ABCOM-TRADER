@@ -45,6 +45,8 @@ model User {
   portfolioTargets      PortfolioTarget[]
   rebalancingRecommendations RebalancingRecommendation[]
   optimizationResults   OptimizationResult[]
+  algorithmDecisions    AlgorithmDecision[]
+  algorithmPerformance  AlgorithmPerformance[]
 
   @@map("users")
 }
@@ -199,29 +201,61 @@ model StockPrice {
 // Sprint 3: Trading Session Management
 
 model TradingSession {
-  id                          String      @id @default(cuid())
-  userId                      String      @map("user_id")
-  durationMinutes             Int         @map("duration_minutes")
-  lossLimitAmount             Decimal     @map("loss_limit_amount")
-  lossLimitPercentage         Decimal     @map("loss_limit_percentage")
-  status                      String      @default("pending") // 'pending', 'active', 'completed', 'stopped', 'expired'
-  startTime                   DateTime?   @map("start_time")
-  endTime                     DateTime?   @map("end_time")
+  id                String               @id @default(cuid())
+  userId            String               @map("user_id")
+  
+  // Session Configuration
+  durationMinutes   Int                  @map("duration_minutes") // 60, 240, 1440, 10080 (1h, 4h, 24h, 7d)
+  lossLimitAmount   Decimal              @map("loss_limit_amount")
+  lossLimitPercent  Decimal              @map("loss_limit_percent")
+  
+  // Session Status - String fields for SQLite compatibility
+  status            String               @default("PENDING") @map("status") // 'PENDING', 'ACTIVE', 'EXPIRED', 'STOPPED', 'COMPLETED', 'EMERGENCY_STOPPED'
+  startTime         DateTime?            @map("start_time")
+  endTime           DateTime?            @map("end_time")
+  actualEndTime     DateTime?            @map("actual_end_time")
+  
+  // Performance Tracking
+  currentBalance    Decimal              @map("current_balance")
+  startingBalance   Decimal              @map("starting_balance")
+  currentPnL        Decimal              @default(0) @map("current_pnl")
+  maxLoss           Decimal              @default(0) @map("max_loss")
+  maxGain           Decimal              @default(0) @map("max_gain")
+  tradeCount        Int                  @default(0) @map("trade_count")
+  
+  // Legacy fields for compatibility
   actualDurationMinutes       Int?        @map("actual_duration_minutes")
-  totalTrades                 Int         @default(0) @map("total_trades")
   realizedPnl                 Decimal     @default(0.00) @map("realized_pnl")
   sessionPerformancePercentage Decimal    @default(0.00) @map("session_performance_percentage")
-  terminationReason           String?     @map("termination_reason") // 'completed', 'manual_stop', 'loss_limit', 'time_limit'
-  createdAt                   DateTime    @default(now()) @map("created_at")
-  updatedAt                   DateTime    @updatedAt @map("updated_at")
-
+  terminationReason           String?     @map("termination_reason")
+  
+  // Metadata
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  
   // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  algorithmDecisions AlgorithmDecision[]
+  sessionEvents     SessionEvent[]
+  
   @@map("trading_sessions")
   @@index([userId, status])
   @@index([status])
   @@index([userId, createdAt])
+  @@index([endTime])
+}
+
+model SessionEvent {
+  id          String            @id @default(cuid())
+  sessionId   String            @map("session_id")
+  session     TradingSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  eventType   String            @map("event_type") // 'SESSION_CREATED', 'SESSION_STARTED', 'SESSION_ENDED', 'LOSS_LIMIT_WARNING', 'TIME_LIMIT_WARNING', 'EMERGENCY_STOP', 'ALGORITHM_DECISION'
+  eventData   String?           @map("event_data") // JSON string
+  timestamp   DateTime          @default(now())
+  
+  @@map("session_events")
+  @@index([sessionId, timestamp])
 }
 
 // Epic 4: Portfolio Management Models
@@ -430,3 +464,177 @@ model OptimizationResult {
   @@index([userId, optimizationDate])
   @@index([optimizationType])
 }
+
+// Epic 3: SmartTrade AI Algorithm Models
+
+model AlgorithmDecision {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  sessionId            String?  @map("session_id")
+  symbol               String
+  decisionType         String   @map("decision_type") // 'buy', 'sell', 'hold', 'stop'
+  confidence           Decimal  // 0-100 confidence score
+  reasoning            String?  // Algorithm reasoning explanation
+  marketCondition      String?  @map("market_condition") // 'bull', 'bear', 'sideways', 'volatile'
+  volatilityIndex      Decimal? @map("volatility_index")
+  riskScore            Decimal? @map("risk_score")
+  positionSize         Decimal? @map("position_size") // Recommended position size
+  entryPrice           Decimal? @map("entry_price") // Recommended entry price
+  stopLoss             Decimal? @map("stop_loss") // Recommended stop loss
+  takeProfit           Decimal? @map("take_profit") // Recommended take profit
+  technicalIndicators  String?  @map("technical_indicators") // JSON string of technical analysis
+  fundamentalData      String?  @map("fundamental_data") // JSON string of fundamental analysis
+  
+  // Execution tracking
+  isExecuted           Boolean  @default(false) @map("is_executed")
+  executedAt           DateTime? @map("executed_at")
+  executionPrice       Decimal? @map("execution_price")
+  actualQuantity       Decimal? @map("actual_quantity")
+  
+  // Outcome tracking
+  outcome              String?  // 'win', 'loss', 'breakeven', 'pending'
+  profitLoss           Decimal? @map("profit_loss")
+  profitLossPercent    Decimal? @map("profit_loss_percent")
+  holdingDuration      Int?     @map("holding_duration") // Duration in minutes
+  
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradingSession TradingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@map("algorithm_decisions")
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([symbol])
+  @@index([decisionType])
+  @@index([isExecuted])
+  @@index([outcome])
+  @@index([sessionId])
+}
+
+model AlgorithmPerformance {
+  id                      String   @id @default(cuid())
+  userId                  String?  @map("user_id") // Null for system-wide performance
+  date                    DateTime
+  timeframe               String   @default("daily") // 'daily', 'weekly', 'monthly'
+  
+  // Decision metrics
+  totalDecisions          Int      @default(0) @map("total_decisions")
+  executedDecisions       Int      @default(0) @map("executed_decisions")
+  winCount                Int      @default(0) @map("win_count")
+  lossCount               Int      @default(0) @map("loss_count")
+  breakEvenCount          Int      @default(0) @map("break_even_count")
+  
+  // Performance metrics
+  winRate                 Decimal? @map("win_rate")
+  avgWin                  Decimal? @map("avg_win")
+  avgLoss                 Decimal? @map("avg_loss")
+  avgHoldingTime          Decimal? @map("avg_holding_time") // In hours
+  totalProfitLoss         Decimal? @map("total_profit_loss")
+  returnPercentage        Decimal? @map("return_percentage")
+  
+  // Confidence metrics
+  avgConfidence           Decimal? @map("avg_confidence")
+  highConfidenceWinRate   Decimal? @map("high_confidence_win_rate") // Win rate for confidence > 80
+  lowConfidenceWinRate    Decimal? @map("low_confidence_win_rate") // Win rate for confidence < 50
+  
+  // Risk metrics
+  sharpeRatio             Decimal? @map("sharpe_ratio")
+  maxDrawdown             Decimal? @map("max_drawdown")
+  volatility              Decimal?
+  
+  // Market condition performance
+  bullMarketPerformance   Decimal? @map("bull_market_performance")
+  bearMarketPerformance   Decimal? @map("bear_market_performance")
+  sidewaysPerformance     Decimal? @map("sideways_performance")
+  volatilePerformance     Decimal? @map("volatile_performance")
+  
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("algorithm_performance")
+  @@index([userId, date])
+  @@index([date])
+  @@index([timeframe])
+}
+
+model MarketCondition {
+  id                    String   @id @default(cuid())
+  timestamp             DateTime @default(now())
+  
+  // Market classification
+  overallCondition      String   @map("overall_condition") // 'bull', 'bear', 'sideways', 'volatile'
+  trendStrength         Decimal? @map("trend_strength") // 0-100
+  volatilityIndex       Decimal? @map("volatility_index") // VIX-like measure
+  marketSentiment       String?  @map("market_sentiment") // 'positive', 'negative', 'neutral'
+  
+  // Market indicators
+  spyPrice              Decimal? @map("spy_price")
+  spyChange             Decimal? @map("spy_change")
+  spyChangePercent      Decimal? @map("spy_change_percent")
+  volume                BigInt?
+  
+  // Technical indicators
+  sma20                 Decimal? @map("sma_20")
+  sma50                 Decimal? @map("sma_50")
+  sma200                Decimal? @map("sma_200")
+  rsi                   Decimal?
+  macd                  Decimal?
+  bollBandUpper         Decimal? @map("boll_band_upper")
+  bollBandLower         Decimal? @map("boll_band_lower")
+  
+  // Market data
+  advanceDeclineRatio   Decimal? @map("advance_decline_ratio")
+  newHighsNews          Int?     @map("new_highs_news")
+  sectorRotation        String?  @map("sector_rotation") // JSON of sector performance
+  
+  // Analysis metadata
+  analysisVersion       String?  @map("analysis_version")
+  dataQuality          String   @default("good") @map("data_quality") // 'good', 'fair', 'poor'
+  confidence           Decimal? // Confidence in the analysis 0-100
+  
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@map("market_conditions")
+  @@index([timestamp])
+  @@index([overallCondition])
+  @@index([timestamp, overallCondition])
+}
+
+model AlgorithmConfig {
+  id                      String   @id @default(cuid())
+  name                    String   @unique
+  version                 String
+  isActive                Boolean  @default(false) @map("is_active")
+  
+  // Algorithm parameters
+  parameters              String   // JSON string of algorithm parameters
+  riskParameters          String   @map("risk_parameters") // JSON string
+  marketConditionWeights  String   @map("market_condition_weights") // JSON string
+  
+  // Performance thresholds
+  minConfidenceThreshold  Decimal  @default(50) @map("min_confidence_threshold")
+  maxPositionSize         Decimal  @default(0.1) @map("max_position_size") // Max 10% of portfolio
+  stopLossPercent         Decimal  @default(5) @map("stop_loss_percent")
+  takeProfitPercent       Decimal  @default(10) @map("take_profit_percent")
+  
+  // Feature flags
+  enableTechnicalAnalysis Boolean  @default(true) @map("enable_technical_analysis")
+  enableFundamentalAnalysis Boolean @default(true) @map("enable_fundamental_analysis")
+  enableSentimentAnalysis Boolean  @default(true) @map("enable_sentiment_analysis")
+  enableRiskManagement    Boolean  @default(true) @map("enable_risk_management")
+  
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("algorithm_configs")
+}
+
+// Add relations to existing models
+// Update User model to include algorithm relations (need to add this separately)
+// Update TradingSession model to include algorithm relations (need to add this separately)

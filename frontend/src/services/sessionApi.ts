@@ -1,69 +1,65 @@
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002/api/v1';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3003/api/v1';
 
-// Types
 export interface SessionConfig {
-  durationMinutes: 60 | 240 | 1440 | 10080; // 1h, 4h, 1d, 7d
-  lossLimitAmount?: number;
+  durationMinutes: 60 | 240 | 1440 | 10080;
+  lossLimitAmount: number;
+}
+
+export interface Session {
+  id: string;
+  durationMinutes: number;
+  lossLimitAmount: number;
   lossLimitPercentage?: number;
-}
-
-export interface SessionCreateResponse {
-  sessionId: string;
-  durationMinutes: number;
-  lossLimitAmount: number;
-  lossLimitPercentage: number;
-  estimatedEndTime: string;
-  status: 'pending';
-}
-
-export interface ActiveSession {
-  sessionId: string;
-  status: 'active';
-  durationMinutes: number;
-  elapsedMinutes: number;
-  remainingMinutes: number;
-  lossLimitAmount: number;
-  currentPnL: number;
-  totalTrades: number;
-  progressPercentages: {
-    timeElapsed: number;
-    lossLimitUsed: number;
-  };
-}
-
-export interface SessionValidation {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-}
-
-export interface SessionHistoryItem {
-  sessionId: string;
-  durationMinutes: number;
-  lossLimitAmount: number;
-  lossLimitPercentage: number;
   status: string;
-  startTime: string | null;
-  endTime: string | null;
-  actualDurationMinutes: number | null;
-  totalTrades: number;
-  realizedPnl: number;
-  sessionPerformancePercentage: number | null;
-  terminationReason: string | null;
+  startTime?: string;
+  endTime?: string;
+  realizedPnl?: number;
+  totalTrades?: number;
+  terminationReason?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SessionHistoryResponse {
-  sessions: SessionHistoryItem[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    hasMore: boolean;
+export interface SessionCreateResponse {
+  success: boolean;
+  data?: {
+    session: Session;
   };
+  error?: string;
+}
+
+export interface SessionUpdateData {
+  currentPnL?: number;
+  tradeCount?: number;
+}
+
+export interface SessionHistoryResponse {
+  success: boolean;
+  data?: {
+    sessions: Session[];
+    pagination: {
+      limit: number;
+      offset: number;
+      hasMore: boolean;
+    };
+  };
+  error?: string;
+}
+
+export interface SessionStatsResponse {
+  success: boolean;
+  data?: {
+    stats: {
+      totalSessions: number;
+      averageDuration?: number;
+      averagePnL?: number;
+      averageTradeCount?: number;
+      statusBreakdown: Record<string, number>;
+    };
+  };
+  error?: string;
 }
 
 // Get auth token
@@ -91,56 +87,26 @@ export const sessionApi = {
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to create session');
-      }
-
-      return response.data.data;
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to create trading session');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to create trading session'
+        };
       }
-      throw error;
+      return {
+        success: false,
+        error: 'Failed to create trading session'
+      };
     }
   },
 
   /**
-   * Get active session data
+   * Start a pending trading session
    */
-  async getActiveSession(): Promise<ActiveSession | null> {
-    try {
-      const response = await axios.get(
-        `${API_BASE}/sessions/active`,
-        {
-          headers: createAuthHeaders(),
-        }
-      );
-
-      if (!response.data.success) {
-        if (response.status === 404) {
-          return null; // No active session
-        }
-        throw new Error(response.data.message || 'Failed to get active session');
-      }
-
-      return response.data.data;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        return null; // No active session
-      }
-      if (axios.isAxiosError(error) && error.response) {
-        const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to get active session');
-      }
-      throw error;
-    }
-  },
-
-  /**
-   * Start a pending session
-   */
-  async startSession(sessionId: string): Promise<void> {
+  async startSession(sessionId: string): Promise<SessionCreateResponse> {
     try {
       const response = await axios.post(
         `${API_BASE}/sessions/${sessionId}/start`,
@@ -150,67 +116,137 @@ export const sessionApi = {
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to start session');
-      }
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to start trading session');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to start trading session'
+        };
       }
-      throw error;
+      return {
+        success: false,
+        error: 'Failed to start trading session'
+      };
     }
   },
 
   /**
-   * Stop an active session
+   * Stop an active trading session
    */
-  async stopSession(sessionId: string, reason: string = 'manual_stop'): Promise<void> {
+  async stopSession(sessionId: string): Promise<SessionCreateResponse> {
     try {
       const response = await axios.post(
         `${API_BASE}/sessions/${sessionId}/stop`,
-        { reason },
+        {},
         {
           headers: createAuthHeaders(),
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to stop session');
-      }
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to stop trading session');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to stop trading session'
+        };
       }
-      throw error;
+      return {
+        success: false,
+        error: 'Failed to stop trading session'
+      };
     }
   },
 
   /**
-   * Validate session configuration
+   * Emergency stop a trading session
    */
-  async validateSession(config: SessionConfig): Promise<SessionValidation> {
+  async emergencyStopSession(sessionId: string): Promise<SessionCreateResponse> {
     try {
       const response = await axios.post(
-        `${API_BASE}/sessions/validate`,
-        config,
+        `${API_BASE}/sessions/${sessionId}/emergency-stop`,
+        {},
         {
           headers: createAuthHeaders(),
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to validate session');
-      }
-
-      return response.data.data;
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to validate session configuration');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to emergency stop trading session'
+        };
       }
-      throw error;
+      return {
+        success: false,
+        error: 'Failed to emergency stop trading session'
+      };
+    }
+  },
+
+  /**
+   * Get active trading session for user
+   */
+  async getActiveSession(): Promise<SessionCreateResponse> {
+    try {
+      const response = await axios.get(
+        `${API_BASE}/sessions/active`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        return {
+          success: false,
+          error: errorData.error || 'Failed to get active session'
+        };
+      }
+      return {
+        success: false,
+        error: 'Failed to get active session'
+      };
+    }
+  },
+
+  /**
+   * Update session performance data
+   */
+  async updateSessionPerformance(
+    sessionId: string, 
+    data: SessionUpdateData
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await axios.put(
+        `${API_BASE}/sessions/${sessionId}/performance`,
+        data,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        return {
+          success: false,
+          error: errorData.error || 'Failed to update session performance'
+        };
+      }
+      return {
+        success: false,
+        error: 'Failed to update session performance'
+      };
     }
   },
 
@@ -218,53 +254,65 @@ export const sessionApi = {
    * Get session history
    */
   async getSessionHistory(
-    limit: number = 50,
-    offset: number = 0,
-    filters?: {
-      dateFrom?: string;
-      dateTo?: string;
-      status?: string;
-      performanceFilter?: 'profit' | 'loss' | 'all';
-    }
+    limit: number = 10, 
+    offset: number = 0
   ): Promise<SessionHistoryResponse> {
     try {
-      const params = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
-      });
-
-      if (filters) {
-        if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
-        if (filters.dateTo) params.append('dateTo', filters.dateTo);
-        if (filters.status) params.append('status', filters.status);
-        if (filters.performanceFilter) params.append('performanceFilter', filters.performanceFilter);
-      }
-
       const response = await axios.get(
-        `${API_BASE}/sessions/history?${params.toString()}`,
+        `${API_BASE}/sessions/history?limit=${limit}&offset=${offset}`,
         {
           headers: createAuthHeaders(),
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to get session history');
-      }
-
-      return response.data.data;
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to get session history');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to get session history'
+        };
       }
-      throw error;
+      return {
+        success: false,
+        error: 'Failed to get session history'
+      };
+    }
+  },
+
+  /**
+   * Get session statistics
+   */
+  async getSessionStats(): Promise<SessionStatsResponse> {
+    try {
+      const response = await axios.get(
+        `${API_BASE}/sessions/stats`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        return {
+          success: false,
+          error: errorData.error || 'Failed to get session statistics'
+        };
+      }
+      return {
+        success: false,
+        error: 'Failed to get session statistics'
+      };
     }
   },
 
   /**
    * Get specific session details
    */
-  async getSession(sessionId: string): Promise<SessionHistoryItem> {
+  async getSession(sessionId: string): Promise<SessionCreateResponse> {
     try {
       const response = await axios.get(
         `${API_BASE}/sessions/${sessionId}`,
@@ -273,51 +321,19 @@ export const sessionApi = {
         }
       );
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to get session');
-      }
-
-      return response.data.data;
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const errorData = error.response.data;
-        throw new Error(errorData.message || 'Failed to get session details');
+        return {
+          success: false,
+          error: errorData.error || 'Failed to get session details'
+        };
       }
-      throw error;
-    }
-  },
-
-  /**
-   * Format duration for display
-   */
-  formatDuration(minutes: number): string {
-    if (minutes === 60) return '1 Hour';
-    if (minutes === 240) return '4 Hours';
-    if (minutes === 1440) return '1 Day';
-    if (minutes === 10080) return '7 Days';
-    
-    // Fallback for custom durations
-    if (minutes < 60) return `${minutes}m`;
-    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-    return `${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
-  },
-
-  /**
-   * Format time remaining
-   */
-  formatTimeRemaining(minutes: number): string {
-    if (minutes <= 0) return '0m';
-    
-    const days = Math.floor(minutes / 1440);
-    const hours = Math.floor((minutes % 1440) / 60);
-    const mins = minutes % 60;
-    
-    if (days > 0) {
-      return `${days}d ${hours}h ${mins}m`;
-    } else if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    } else {
-      return `${mins}m`;
+      return {
+        success: false,
+        error: 'Failed to get session details'
+      };
     }
   }
 };
