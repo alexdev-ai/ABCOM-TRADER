@@ -1,329 +1,358 @@
 import { PrismaClient } from '@prisma/client';
-import marketDataService from './marketData.service';
-import fundingService from './funding.service';
 
 const prisma = new PrismaClient();
 
-interface PortfolioPosition {
+// Mock market data service for now
+const marketDataService = {
+  async getCurrentPrices(symbols: string[]): Promise<Record<string, number>> {
+    // Mock implementation - would integrate with real market data API
+    const prices: Record<string, number> = {};
+    symbols.forEach(symbol => {
+      prices[symbol] = Math.random() * 200 + 50; // Random prices between $50-$250
+    });
+    return prices;
+  },
+  
+  async getStockSector(symbol: string): Promise<string> {
+    // Mock implementation - would get real sector data
+    const sectors = ['Technology', 'Healthcare', 'Financial', 'Consumer', 'Industrial'];
+    return sectors[Math.floor(Math.random() * sectors.length)];
+  }
+};
+
+export interface PortfolioPositionWithPrice {
+  id: number;
+  userId: string;
   symbol: string;
   quantity: number;
   averageCost: number;
-  totalCost: number;
   currentPrice: number;
-  currentValue: number;
-  unrealizedGainLoss: number;
-  unrealizedGainLossPercent: number;
+  marketValue: number;
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+  sector: string | null;
   lastUpdated: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  dayChange?: number;
+  dayChangePercent?: number;
 }
 
-interface PortfolioSummary {
+export interface PortfolioSummaryData {
   totalValue: number;
-  totalCost: number;
-  availableCash: number;
-  totalUnrealizedGainLoss: number;
-  totalUnrealizedGainLossPercent: number;
-  positions: PortfolioPosition[];
-  lastUpdated: Date;
+  cashBalance: number;
+  totalPnl: number;
+  totalPnlPercent: number;
+  numberOfPositions: number;
+  dayChange: number;
+  dayChangePercent: number;
+  positionsValue: number;
 }
 
-interface PortfolioMetrics {
-  totalPortfolioValue: number;
-  dailyChange: number;
-  dailyChangePercent: number;
-  totalGainLoss: number;
-  totalGainLossPercent: number;
-  positionCount: number;
-  largestPosition: {
-    symbol: string;
-    value: number;
-    percentage: number;
-  } | null;
-}
-
-class PortfolioService {
+export class PortfolioService {
   /**
-   * Get complete portfolio summary for a user
+   * Get all portfolio positions for a user with real-time prices
    */
-  async getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
+  async getUserPositions(userId: string): Promise<PortfolioPositionWithPrice[]> {
     try {
-      // Get user's holdings
-      const holdings = await prisma.holding.findMany({
+      const positions = await prisma.portfolioPosition.findMany({
         where: { userId },
-        orderBy: { symbol: 'asc' }
+        orderBy: { marketValue: 'desc' },
       });
 
-      // Get available cash balance
-      const availableCash = await fundingService.getAccountBalance(userId);
-
-      // If no holdings, return empty portfolio with cash balance
-      if (holdings.length === 0) {
-        return {
-          totalValue: availableCash,
-          totalCost: 0,
-          availableCash,
-          totalUnrealizedGainLoss: 0,
-          totalUnrealizedGainLossPercent: 0,
-          positions: [],
-          lastUpdated: new Date()
-        };
+      if (positions.length === 0) {
+        return [];
       }
 
-      // Get current market prices for all held symbols
-      const symbols = holdings.map((h: any) => h.symbol);
-      const currentPrices = await marketDataService.getMultipleStockPrices(symbols);
+      // Get current prices for all symbols
+      const symbols = positions.map(p => p.symbol);
+      const currentPrices = await marketDataService.getCurrentPrices(symbols);
 
-      // Calculate positions with current values
-      const positions: PortfolioPosition[] = [];
-      let totalValue = 0;
-      let totalCost = 0;
-
-      for (const holding of holdings) {
-        const currentPrice = currentPrices[holding.symbol]?.price || 0;
-        const quantity = parseFloat(holding.quantity.toString());
-        const averageCost = parseFloat(holding.averageCost.toString());
-        const holdingTotalCost = parseFloat(holding.totalCost.toString());
-        
-        const currentValue = quantity * currentPrice;
-        const unrealizedGainLoss = currentValue - holdingTotalCost;
-        const unrealizedGainLossPercent = holdingTotalCost > 0 
-          ? (unrealizedGainLoss / holdingTotalCost) * 100 
+      // Calculate real-time values for each position
+      const positionsWithPrices: PortfolioPositionWithPrice[] = positions.map(position => {
+        const currentPrice = currentPrices[position.symbol] || Number(position.currentPrice) || 0;
+        const marketValue = Number(position.quantity) * currentPrice;
+        const unrealizedPnl = marketValue - (Number(position.quantity) * Number(position.averageCost));
+        const unrealizedPnlPercent = Number(position.averageCost) > 0 
+          ? (unrealizedPnl / (Number(position.quantity) * Number(position.averageCost))) * 100 
           : 0;
 
-        positions.push({
-          symbol: holding.symbol,
-          quantity,
-          averageCost,
-          totalCost: holdingTotalCost,
+        return {
+          ...position,
           currentPrice,
-          currentValue,
-          unrealizedGainLoss,
-          unrealizedGainLossPercent,
-          lastUpdated: currentPrices[holding.symbol]?.lastUpdated || new Date()
-        });
+          marketValue,
+          unrealizedPnl,
+          unrealizedPnlPercent,
+          quantity: Number(position.quantity),
+          averageCost: Number(position.averageCost),
+        };
+      });
 
-        totalValue += currentValue;
-        totalCost += holdingTotalCost;
-      }
+      // Update database with current prices (background update)
+      this.updatePositionPricesAsync(positions, currentPrices);
 
-      // Calculate overall metrics
-      const totalUnrealizedGainLoss = totalValue - totalCost;
-      const totalUnrealizedGainLossPercent = totalCost > 0 
-        ? (totalUnrealizedGainLoss / totalCost) * 100 
-        : 0;
-
-      return {
-        totalValue: totalValue + availableCash, // Include cash in total portfolio value
-        totalCost,
-        availableCash,
-        totalUnrealizedGainLoss,
-        totalUnrealizedGainLossPercent,
-        positions: positions.sort((a, b) => b.currentValue - a.currentValue), // Sort by value descending
-        lastUpdated: new Date()
-      };
-
+      return positionsWithPrices;
     } catch (error) {
-      console.error('Portfolio service error:', error);
-      throw new Error('Failed to retrieve portfolio summary');
+      console.error('Error fetching user positions:', error);
+      throw new Error('Failed to fetch portfolio positions');
     }
   }
 
   /**
-   * Get portfolio performance metrics
+   * Get portfolio summary with real-time calculations
    */
-  async getPortfolioMetrics(userId: string): Promise<PortfolioMetrics> {
+  async getPortfolioSummary(userId: string): Promise<PortfolioSummaryData> {
     try {
-      const portfolio = await this.getPortfolioSummary(userId);
+      const positions = await this.getUserPositions(userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { accountBalance: true }
+      });
+
+      const cashBalance = Number(user?.accountBalance || 0);
+      const positionsValue = positions.reduce((sum, pos) => sum + pos.marketValue, 0);
+      const totalValue = cashBalance + positionsValue;
       
-      // Find largest position
-      let largestPosition = null;
-      if (portfolio.positions.length > 0) {
-        const largest = portfolio.positions[0]; // Already sorted by value
-        if (largest) {
-          largestPosition = {
-            symbol: largest.symbol,
-            value: largest.currentValue,
-            percentage: portfolio.totalValue > 0 
-              ? (largest.currentValue / portfolio.totalValue) * 100 
-              : 0
-          };
+      const totalCost = positions.reduce((sum, pos) => sum + (pos.quantity * pos.averageCost), 0);
+      const totalPnl = positionsValue - totalCost;
+      const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+
+      // Calculate day change (would need historical data)
+      const dayChange = 0; // TODO: Implement with historical price data
+      const dayChangePercent = 0; // TODO: Implement with historical price data
+
+      const summaryData: PortfolioSummaryData = {
+        totalValue,
+        cashBalance,
+        totalPnl,
+        totalPnlPercent,
+        numberOfPositions: positions.length,
+        dayChange,
+        dayChangePercent,
+        positionsValue,
+      };
+
+      // Update summary in database (background update)
+      this.updatePortfolioSummaryAsync(userId, summaryData);
+
+      return summaryData;
+    } catch (error) {
+      console.error('Error calculating portfolio summary:', error);
+      throw new Error('Failed to calculate portfolio summary');
+    }
+  }
+
+  /**
+   * Add or update a position (called when trades are executed)
+   */
+  async updatePosition(
+    userId: string,
+    symbol: string,
+    quantity: number,
+    price: number,
+    type: 'buy' | 'sell'
+  ): Promise<PortfolioPosition> {
+    try {
+      const existingPosition = await prisma.portfolioPosition.findUnique({
+        where: {
+          userId_symbol: { userId, symbol }
         }
-      }
+      });
 
-      // Calculate daily change (simplified - would need historical data for real calculation)
-      const dailyChange = portfolio.totalUnrealizedGainLoss * 0.1; // Simplified estimate
-      const dailyChangePercent = portfolio.totalValue > 0 
-        ? (dailyChange / portfolio.totalValue) * 100 
-        : 0;
+      if (existingPosition) {
+        const currentQuantity = Number(existingPosition.quantity);
+        const currentCost = Number(existingPosition.averageCost);
 
-      return {
-        totalPortfolioValue: portfolio.totalValue,
-        dailyChange,
-        dailyChangePercent,
-        totalGainLoss: portfolio.totalUnrealizedGainLoss,
-        totalGainLossPercent: portfolio.totalUnrealizedGainLossPercent,
-        positionCount: portfolio.positions.length,
-        largestPosition
-      };
+        if (type === 'buy') {
+          // Adding to position
+          const newQuantity = currentQuantity + quantity;
+          const newAverageCost = ((currentQuantity * currentCost) + (quantity * price)) / newQuantity;
 
-    } catch (error) {
-      console.error('Portfolio metrics error:', error);
-      throw new Error('Failed to calculate portfolio metrics');
-    }
-  }
-
-  /**
-   * Get portfolio allocation (by position size)
-   */
-  async getPortfolioAllocation(userId: string): Promise<Array<{
-    symbol: string;
-    value: number;
-    percentage: number;
-    color: string;
-  }>> {
-    try {
-      const portfolio = await this.getPortfolioSummary(userId);
-      
-      if (portfolio.positions.length === 0) {
-        return [{
-          symbol: 'CASH',
-          value: portfolio.availableCash,
-          percentage: 100,
-          color: '#10B981' // Green for cash
-        }];
-      }
-
-      // Generate colors for positions
-      const colors = [
-        '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-        '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
-      ];
-
-      const allocation = portfolio.positions.map((position, index) => ({
-        symbol: position.symbol,
-        value: position.currentValue,
-        percentage: portfolio.totalValue > 0 
-          ? (position.currentValue / portfolio.totalValue) * 100 
-          : 0,
-        color: colors[index % colors.length] || '#6B7280' // Default gray color
-      }));
-
-      // Add cash if significant
-      if (portfolio.availableCash > 0) {
-        const cashPercentage = (portfolio.availableCash / portfolio.totalValue) * 100;
-        if (cashPercentage >= 1) { // Only show cash if >= 1%
-          allocation.push({
-            symbol: 'CASH',
-            value: portfolio.availableCash,
-            percentage: cashPercentage,
-            color: '#10B981'
+          return await prisma.portfolioPosition.update({
+            where: { id: existingPosition.id },
+            data: {
+              quantity: newQuantity,
+              averageCost: newAverageCost,
+              lastUpdated: new Date(),
+            }
           });
+        } else {
+          // Selling from position
+          const newQuantity = currentQuantity - quantity;
+
+          if (newQuantity <= 0) {
+            // Position fully sold, remove it
+            await prisma.portfolioPosition.delete({
+              where: { id: existingPosition.id }
+            });
+            return existingPosition;
+          } else {
+            // Partial sale, keep same average cost
+            return await prisma.portfolioPosition.update({
+              where: { id: existingPosition.id },
+              data: {
+                quantity: newQuantity,
+                lastUpdated: new Date(),
+              }
+            });
+          }
         }
+      } else if (type === 'buy') {
+        // New position
+        const sector = await marketDataService.getStockSector(symbol);
+        
+        return await prisma.portfolioPosition.create({
+          data: {
+            userId,
+            symbol,
+            quantity,
+            averageCost: price,
+            sector,
+            lastUpdated: new Date(),
+          }
+        });
+      } else {
+        throw new Error('Cannot sell a position that does not exist');
       }
-
-      return allocation.sort((a, b) => b.percentage - a.percentage);
-
     } catch (error) {
-      console.error('Portfolio allocation error:', error);
-      throw new Error('Failed to calculate portfolio allocation');
+      console.error('Error updating position:', error);
+      throw new Error('Failed to update portfolio position');
     }
   }
 
   /**
-   * Get recent transactions (orders) for portfolio history
+   * Get positions by performance (gainers/losers)
    */
-  async getRecentTransactions(userId: string, limit: number = 10): Promise<Array<{
-    id: string;
-    symbol: string;
-    type: string;
-    quantity: number;
-    price: number;
-    totalAmount: number;
-    status: string;
-    executedAt: Date | null;
-    createdAt: Date;
-  }>> {
+  async getPositionsByPerformance(userId: string, type: 'gainers' | 'losers', limit: number = 5) {
     try {
-      const orders = await prisma.order.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        take: limit
+      const positions = await this.getUserPositions(userId);
+      
+      const sorted = positions.sort((a, b) => {
+        return type === 'gainers' 
+          ? b.unrealizedPnlPercent - a.unrealizedPnlPercent
+          : a.unrealizedPnlPercent - b.unrealizedPnlPercent;
       });
 
-      return orders.map(order => ({
-        id: order.id,
-        symbol: order.symbol,
-        type: order.type,
-        quantity: parseFloat(order.quantity.toString()),
-        price: parseFloat(order.price.toString()),
-        totalAmount: parseFloat(order.totalAmount.toString()),
-        status: order.status,
-        executedAt: order.executedAt,
-        createdAt: order.createdAt
+      return sorted.slice(0, limit);
+    } catch (error) {
+      console.error('Error fetching positions by performance:', error);
+      throw new Error('Failed to fetch positions by performance');
+    }
+  }
+
+  /**
+   * Search positions by symbol
+   */
+  async searchPositions(userId: string, query: string): Promise<PortfolioPositionWithPrice[]> {
+    try {
+      const positions = await this.getUserPositions(userId);
+      
+      return positions.filter(position => 
+        position.symbol.toLowerCase().includes(query.toLowerCase())
+      );
+    } catch (error) {
+      console.error('Error searching positions:', error);
+      throw new Error('Failed to search positions');
+    }
+  }
+
+  /**
+   * Get allocation breakdown by sector
+   */
+  async getSectorAllocation(userId: string) {
+    try {
+      const positions = await this.getUserPositions(userId);
+      const totalValue = positions.reduce((sum, pos) => sum + pos.marketValue, 0);
+
+      const sectorMap = new Map<string, number>();
+      
+      positions.forEach(position => {
+        const sector = position.sector || 'Unknown';
+        const currentValue = sectorMap.get(sector) || 0;
+        sectorMap.set(sector, currentValue + position.marketValue);
+      });
+
+      const allocation = Array.from(sectorMap.entries()).map(([sector, value]) => ({
+        sector,
+        value,
+        percentage: totalValue > 0 ? (value / totalValue) * 100 : 0,
       }));
 
+      return allocation.sort((a, b) => b.value - a.value);
     } catch (error) {
-      console.error('Recent transactions error:', error);
-      throw new Error('Failed to retrieve recent transactions');
+      console.error('Error calculating sector allocation:', error);
+      throw new Error('Failed to calculate sector allocation');
     }
   }
 
   /**
-   * Initialize demo portfolio for testing
+   * Background update of position prices (non-blocking)
    */
-  async initializeDemoPortfolio(userId: string): Promise<void> {
+  private async updatePositionPricesAsync(
+    positions: PortfolioPosition[],
+    currentPrices: Record<string, number>
+  ): Promise<void> {
     try {
-      // Check if user already has holdings
-      const existingHoldings = await prisma.holding.findFirst({
-        where: { userId }
-      });
+      const updates = positions.map(position => {
+        const currentPrice = currentPrices[position.symbol];
+        if (!currentPrice) return null;
 
-      if (existingHoldings) {
-        console.log('User already has holdings, skipping demo portfolio creation');
-        return;
-      }
+        const marketValue = Number(position.quantity) * currentPrice;
+        const unrealizedPnl = marketValue - (Number(position.quantity) * Number(position.averageCost));
+        const unrealizedPnlPercent = Number(position.averageCost) > 0 
+          ? (unrealizedPnl / (Number(position.quantity) * Number(position.averageCost))) * 100 
+          : 0;
 
-      // Create some demo holdings
-      const demoHoldings = [
-        { symbol: 'AAPL', quantity: 10, averageCost: 170.00 },
-        { symbol: 'GOOGL', quantity: 5, averageCost: 120.00 },
-        { symbol: 'MSFT', quantity: 8, averageCost: 340.00 }
-      ];
-
-      for (const holding of demoHoldings) {
-        const totalCost = holding.quantity * holding.averageCost;
-        
-        await prisma.holding.create({
+        return prisma.portfolioPosition.update({
+          where: { id: position.id },
           data: {
-            userId,
-            symbol: holding.symbol,
-            quantity: holding.quantity,
-            averageCost: holding.averageCost,
-            totalCost
+            currentPrice,
+            marketValue,
+            unrealizedPnl,
+            unrealizedPnlPercent,
+            lastUpdated: new Date(),
           }
         });
+      }).filter(Boolean);
 
-        // Create corresponding buy order record
-        await prisma.order.create({
-          data: {
-            userId,
-            symbol: holding.symbol,
-            type: 'buy',
-            quantity: holding.quantity,
-            price: holding.averageCost,
-            totalAmount: totalCost,
-            status: 'completed',
-            executedAt: new Date()
-          }
-        });
-      }
-
-      console.log(`✅ Demo portfolio created for user ${userId}`);
-
+      await Promise.all(updates);
     } catch (error) {
-      console.error('Failed to initialize demo portfolio:', error);
-      throw new Error('Failed to initialize demo portfolio');
+      console.error('Error updating position prices in background:', error);
+    }
+  }
+
+  /**
+   * Background update of portfolio summary (non-blocking)
+   */
+  private async updatePortfolioSummaryAsync(
+    userId: string,
+    summaryData: PortfolioSummaryData
+  ): Promise<void> {
+    try {
+      await prisma.portfolioSummary.upsert({
+        where: { userId },
+        update: {
+          totalValue: summaryData.totalValue,
+          cashBalance: summaryData.cashBalance,
+          totalPnl: summaryData.totalPnl,
+          totalPnlPercent: summaryData.totalPnlPercent,
+          numberOfPositions: summaryData.numberOfPositions,
+          lastUpdated: new Date(),
+        },
+        create: {
+          userId,
+          totalValue: summaryData.totalValue,
+          cashBalance: summaryData.cashBalance,
+          totalPnl: summaryData.totalPnl,
+          totalPnlPercent: summaryData.totalPnlPercent,
+          numberOfPositions: summaryData.numberOfPositions,
+          lastUpdated: new Date(),
+        }
+      });
+    } catch (error) {
+      console.error('Error updating portfolio summary in background:', error);
     }
   }
 }
 
-export default new PortfolioService();
+export const portfolioService = new PortfolioService();

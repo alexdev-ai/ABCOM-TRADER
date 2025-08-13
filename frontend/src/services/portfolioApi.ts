@@ -1,229 +1,237 @@
-import axios, { InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
-import { useAuthStore } from '../stores/authStore';
+import axios from 'axios';
 
-const API_BASE_URL = ((import.meta as any).env?.VITE_API_URL as string) || 'http://localhost:3002';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002/api/v1';
 
-// Portfolio interfaces
 export interface PortfolioPosition {
+  id: number;
+  userId: string;
   symbol: string;
   quantity: number;
   averageCost: number;
-  totalCost: number;
   currentPrice: number;
-  currentValue: number;
-  unrealizedGainLoss: number;
-  unrealizedGainLossPercent: number;
+  marketValue: number;
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+  sector: string | null;
   lastUpdated: string;
+  createdAt: string;
+  updatedAt: string;
+  dayChange?: number;
+  dayChangePercent?: number;
 }
 
 export interface PortfolioSummary {
   totalValue: number;
-  totalCost: number;
-  availableCash: number;
-  totalUnrealizedGainLoss: number;
-  totalUnrealizedGainLossPercent: number;
-  positions: PortfolioPosition[];
-  lastUpdated: string;
+  cashBalance: number;
+  totalPnl: number;
+  totalPnlPercent: number;
+  numberOfPositions: number;
+  dayChange: number;
+  dayChangePercent: number;
+  positionsValue: number;
 }
 
-export interface PortfolioMetrics {
-  totalPortfolioValue: number;
-  dailyChange: number;
-  dailyChangePercent: number;
-  totalGainLoss: number;
-  totalGainLossPercent: number;
-  positionCount: number;
-  largestPosition: {
-    symbol: string;
-    value: number;
-    percentage: number;
-  } | null;
-}
-
-export interface PortfolioAllocation {
-  symbol: string;
+export interface SectorAllocation {
+  sector: string;
   value: number;
   percentage: number;
-  color: string;
 }
 
-export interface Transaction {
-  id: string;
-  symbol: string;
-  type: string;
-  quantity: number;
-  price: number;
-  totalAmount: number;
-  status: string;
-  executedAt: string | null;
-  createdAt: string;
-}
+// Get auth token
+const getAuthToken = () => {
+  return localStorage.getItem('authToken');
+};
 
-export interface StockQuote {
-  symbol: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  volume: number;
-  lastUpdated: string;
-}
-
-export interface AvailableStock {
-  symbol: string;
-  name: string;
-  basePrice: number;
-}
-
-// Create axios instance with auth interceptor
-const api = axios.create({
-  baseURL: `${API_BASE_URL}/api/v1`,
-  timeout: 10000,
-});
-
-// Request interceptor to add auth token
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().token;
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error: AxiosError) => Promise.reject(error)
-);
-
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid, logout user
-      useAuthStore.getState().logout();
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+// Create axios instance with auth
+const createAuthHeaders = () => {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export const portfolioApi = {
   /**
-   * Get complete portfolio summary
+   * Get all portfolio positions for the authenticated user
    */
-  async getPortfolioSummary(): Promise<PortfolioSummary> {
+  async getPositions(): Promise<{ success: boolean; data: PortfolioPosition[]; count: number }> {
     try {
-      const response = await api.get('/portfolio/summary');
-      return response.data.data;
+      const response = await axios.get(
+        `${API_BASE}/portfolio/positions`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch portfolio positions');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Portfolio summary error:', error);
-      throw new Error('Failed to fetch portfolio summary');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to fetch portfolio positions');
+      }
+      throw error;
     }
   },
 
   /**
-   * Get portfolio performance metrics
+   * Get portfolio summary with total value, P&L, etc.
    */
-  async getPortfolioMetrics(): Promise<PortfolioMetrics> {
+  async getSummary(): Promise<{ success: boolean; data: PortfolioSummary }> {
     try {
-      const response = await api.get('/portfolio/metrics');
-      return response.data.data;
+      const response = await axios.get(
+        `${API_BASE}/portfolio/summary`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch portfolio summary');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Portfolio metrics error:', error);
-      throw new Error('Failed to fetch portfolio metrics');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to fetch portfolio summary');
+      }
+      throw error;
     }
   },
 
   /**
-   * Get portfolio allocation for charts
+   * Search portfolio positions by symbol
    */
-  async getPortfolioAllocation(): Promise<PortfolioAllocation[]> {
+  async searchPositions(query: string): Promise<{ success: boolean; data: PortfolioPosition[]; count: number }> {
     try {
-      const response = await api.get('/portfolio/allocation');
-      return response.data.data;
+      const response = await axios.get(
+        `${API_BASE}/portfolio/positions/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to search portfolio positions');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Portfolio allocation error:', error);
-      throw new Error('Failed to fetch portfolio allocation');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to search portfolio positions');
+      }
+      throw error;
     }
   },
 
   /**
-   * Get recent transactions
+   * Get top performing positions (gainers or losers)
    */
-  async getRecentTransactions(limit: number = 10): Promise<Transaction[]> {
+  async getPositionsByPerformance(
+    type: 'gainers' | 'losers',
+    limit: number = 5
+  ): Promise<{ success: boolean; data: PortfolioPosition[]; count: number; type: string }> {
     try {
-      const response = await api.get(`/portfolio/transactions?limit=${limit}`);
-      return response.data.data;
+      const response = await axios.get(
+        `${API_BASE}/portfolio/positions/performance?type=${type}&limit=${limit}`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch positions by performance');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Recent transactions error:', error);
-      throw new Error('Failed to fetch recent transactions');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to fetch positions by performance');
+      }
+      throw error;
     }
   },
 
   /**
-   * Get market data for specific symbol
+   * Get portfolio allocation breakdown by sector
    */
-  async getMarketData(symbol: string): Promise<StockQuote> {
+  async getSectorAllocation(): Promise<{ success: boolean; data: SectorAllocation[] }> {
     try {
-      const response = await api.get(`/portfolio/market-data/${symbol.toUpperCase()}`);
-      return response.data.data;
+      const response = await axios.get(
+        `${API_BASE}/portfolio/allocation`,
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch portfolio allocation');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Market data error:', error);
-      throw new Error('Failed to fetch market data');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to fetch portfolio allocation');
+      }
+      throw error;
     }
   },
 
   /**
-   * Get available stocks for trading
+   * Update a position (usually called internally by trading system)
    */
-  async getAvailableStocks(): Promise<AvailableStock[]> {
+  async updatePosition(
+    symbol: string,
+    quantity: number,
+    price: number,
+    type: 'buy' | 'sell'
+  ): Promise<{ success: boolean; data: any; message: string }> {
     try {
-      const response = await api.get('/portfolio/available-stocks');
-      return response.data.data;
+      const response = await axios.post(
+        `${API_BASE}/portfolio/positions`,
+        {
+          symbol,
+          quantity,
+          price,
+          type,
+        },
+        {
+          headers: createAuthHeaders(),
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to update position');
+      }
+
+      return response.data;
     } catch (error) {
-      console.error('Available stocks error:', error);
-      throw new Error('Failed to fetch available stocks');
+      if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data;
+        throw new Error(errorData.error || 'Failed to update position');
+      }
+      throw error;
     }
   },
 
   /**
-   * Initialize demo portfolio
+   * Get top gainers from portfolio
    */
-  async initializeDemoPortfolio(): Promise<void> {
-    try {
-      await api.post('/portfolio/initialize-demo');
-    } catch (error) {
-      console.error('Initialize demo portfolio error:', error);
-      throw new Error('Failed to initialize demo portfolio');
-    }
+  async getTopGainers(limit: number = 5) {
+    return this.getPositionsByPerformance('gainers', limit);
   },
 
   /**
-   * Get complete dashboard data in one call
+   * Get top losers from portfolio
    */
-  async getDashboardData(): Promise<{
-    summary: PortfolioSummary;
-    metrics: PortfolioMetrics;
-    allocation: PortfolioAllocation[];
-    transactions: Transaction[];
-  }> {
-    try {
-      const [summary, metrics, allocation, transactions] = await Promise.all([
-        this.getPortfolioSummary(),
-        this.getPortfolioMetrics(),
-        this.getPortfolioAllocation(),
-        this.getRecentTransactions(5) // Get last 5 transactions for dashboard
-      ]);
-
-      return {
-        summary,
-        metrics,
-        allocation,
-        transactions
-      };
-    } catch (error) {
-      console.error('Dashboard data error:', error);
-      throw new Error('Failed to fetch dashboard data');
-    }
-  }
+  async getTopLosers(limit: number = 5) {
+    return this.getPositionsByPerformance('losers', limit);
+  },
 };
 
 export default portfolioApi;

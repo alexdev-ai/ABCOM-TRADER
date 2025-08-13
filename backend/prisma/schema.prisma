@@ -37,6 +37,8 @@ model User {
   holdings          Holding[]
   orders            Order[]
   tradingSessions   TradingSession[]
+  portfolioPositions PortfolioPosition[]
+  portfolioSummary  PortfolioSummary?
 
   @@map("users")
 }
@@ -205,4 +207,49 @@ model TradingSession {
   @@index([userId, status])
   @@index([status])
   @@index([userId, createdAt])
+}
+
+// Epic 4: Portfolio Management Models
+
+model PortfolioPosition {
+  id                  Int         @id @default(autoincrement())
+  userId              String      @map("user_id")
+  symbol              String
+  quantity            Decimal
+  averageCost         Decimal     @map("average_cost")
+  currentPrice        Decimal?    @map("current_price")
+  marketValue         Decimal?    @map("market_value")
+  unrealizedPnl       Decimal?    @map("unrealized_pnl")
+  unrealizedPnlPercent Decimal?   @map("unrealized_pnl_percent")
+  sector              String?
+  lastUpdated         DateTime    @map("last_updated") @default(now())
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_positions")
+  @@unique([userId, symbol])
+  @@index([userId, symbol])
+  @@index([lastUpdated])
+  @@index([userId, lastUpdated])
+}
+
+model PortfolioSummary {
+  id                Int         @id @default(autoincrement())
+  userId            String      @unique @map("user_id")
+  totalValue        Decimal     @map("total_value")
+  cashBalance       Decimal     @map("cash_balance")
+  totalPnl          Decimal     @map("total_pnl")
+  totalPnlPercent   Decimal     @map("total_pnl_percent")
+  numberOfPositions Int         @map("number_of_positions")
+  lastUpdated       DateTime    @map("last_updated") @default(now())
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_summary")
 }

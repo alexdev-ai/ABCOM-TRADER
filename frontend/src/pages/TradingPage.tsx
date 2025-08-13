@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { tradingApi, type AvailableStock, type TradeOrder, type TradePreview, type StockQuote } from '../services/tradingApi';
+import { sessionApi, type ActiveSession } from '../services/sessionApi';
+import { ActiveSessionDashboard } from '../components/session/ActiveSessionDashboard';
 
 interface StockSearchProps {
   onSelectStock: (stock: AvailableStock) => void;
@@ -340,6 +342,60 @@ const TradingPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Session state
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
+  // Load active session on component mount
+  useEffect(() => {
+    const loadActiveSession = async () => {
+      try {
+        setSessionLoading(true);
+        setSessionError(null);
+        const session = await sessionApi.getActiveSession();
+        setActiveSession(session);
+      } catch (error) {
+        console.error('Failed to load active session:', error);
+        setSessionError(error instanceof Error ? error.message : 'Failed to load session');
+      } finally {
+        setSessionLoading(false);
+      }
+    };
+
+    loadActiveSession();
+
+    // Poll for session updates every 30 seconds
+    const interval = setInterval(loadActiveSession, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Check session limits and warnings
+  const checkSessionLimits = (session: ActiveSession) => {
+    const timeWarning = session.progressPercentages.timeElapsed >= 80;
+    const lossWarning = session.progressPercentages.lossLimitUsed >= 80;
+    const timeCritical = session.progressPercentages.timeElapsed >= 95;
+    const lossCritical = session.progressPercentages.lossLimitUsed >= 95;
+
+    if (timeCritical || lossCritical) {
+      return { 
+        level: 'critical' as const, 
+        message: timeCritical ? 'Session time almost expired!' : 'Loss limit almost reached!' 
+      };
+    }
+    
+    if (timeWarning || lossWarning) {
+      return { 
+        level: 'warning' as const, 
+        message: timeWarning ? 'Session time running low' : 'Approaching loss limit' 
+      };
+    }
+
+    return null;
+  };
+
+  const sessionWarning = activeSession ? checkSessionLimits(activeSession) : null;
 
   const handleStockSelect = (stock: AvailableStock) => {
     setSelectedStock(stock);
@@ -392,11 +448,64 @@ const TradingPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Trading</h1>
         <p className="text-gray-600">Buy and sell stocks with real-time pricing</p>
       </div>
+
+      {/* Session Status Display */}
+      {sessionLoading ? (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex items-center">
+            <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+            <span className="text-blue-800">Loading session status...</span>
+          </div>
+        </div>
+      ) : sessionError ? (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="text-red-800">
+            <strong>Session Error:</strong> {sessionError}
+          </div>
+        </div>
+      ) : !activeSession ? (
+        <div className="mb-6 p-6 bg-yellow-50 border border-yellow-200 rounded-md">
+          <div className="text-center">
+            <div className="text-yellow-800 text-lg font-semibold mb-2">No Active Trading Session</div>
+            <p className="text-yellow-700 mb-4">
+              You need an active trading session to place trades. Start a session to begin trading.
+            </p>
+            <a 
+              href="/sessions" 
+              className="inline-flex items-center px-4 py-2 bg-yellow-600 text-white font-medium rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2"
+            >
+              Start Trading Session
+            </a>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6">
+          <ActiveSessionDashboard />
+          
+          {/* Session Limit Warnings */}
+          {sessionWarning && (
+            <div className={`mt-4 p-4 rounded-md ${
+              sessionWarning.level === 'critical' 
+                ? 'bg-red-50 border border-red-200' 
+                : 'bg-yellow-50 border border-yellow-200'
+            }`}>
+              <div className={`flex items-center ${
+                sessionWarning.level === 'critical' ? 'text-red-800' : 'text-yellow-800'
+              }`}>
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">{sessionWarning.message}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {message && (
         <div className={`mb-6 p-4 rounded-md ${
@@ -408,21 +517,32 @@ const TradingPage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Find Stocks</h2>
-          <StockSearch onSelectStock={handleStockSelect} />
-        </div>
+      {/* Trading Interface - Only show if session is active */}
+      {activeSession ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Find Stocks</h2>
+            <StockSearch onSelectStock={handleStockSelect} />
+          </div>
 
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Place Order</h2>
-          <TradeForm 
-            selectedStock={selectedStock}
-            onPreview={handlePreview}
-            loading={loading}
-          />
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Place Order</h2>
+            <TradeForm 
+              selectedStock={selectedStock}
+              onPreview={handlePreview}
+              loading={loading}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="text-center py-12 text-gray-500">
+          <svg className="mx-auto h-16 w-16 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Trading Disabled</h3>
+          <p className="text-gray-600">Start a trading session to access trading features</p>
+        </div>
+      )}
 
       <TradePreviewModal
         preview={tradePreview}

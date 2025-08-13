@@ -14,19 +14,30 @@ This document defines the user experience goals, information architecture, user 
 
 #### Target User Personas
 
-**Primary Persona: Non-Technical Beginner Trader**
-- Age: Any (interface designed for 14-year-old comprehension level)
-- Technical Knowledge: Minimal - does not understand trading terminology or technical analysis
-- Starting Capital: $90 available for trading
-- Goals: Grow money safely without losing their limited capital
-- Fears: Losing money, making wrong decisions, not understanding what's happening
-- Needs: Ultra-simple explanations, educational transparency, maximum safety controls
+**Primary Persona: Cautious First-Timer with Small Capital**
+- **Demographics:** Age 18-65, minimal trading knowledge, $90-$500 available
+- **Technical Knowledge:** Minimal - does not understand trading terminology or technical analysis
+- **Portfolio Needs:** Wants to see exactly what stocks they own, understand their gains/losses in simple terms
+- **Algorithm Relationship:** Curious but nervous about letting AI make decisions with their money
+- **Portfolio Concerns:** "Am I diversified?" "Why did the AI buy this stock?" "How much am I actually making?"
+- **Interface Requirements:** Ultra-simple explanations, emoji indicators for gains/losses, educational transparency
+- **Trust Factors:** Needs to understand every decision in plain English, maximum safety controls
 
-**Secondary Persona: Cautious First-Time Algorithm User**
-- Experience: May have some basic trading knowledge but new to automated trading
-- Concerns: Trusting an algorithm with their money, understanding bot decisions
-- Needs: Clear explanations of algorithm reasoning, ability to stop trading immediately
-- Preferences: Professional credibility balanced with approachable design
+**Secondary Persona: Algorithm-Curious Retail Investor**
+- **Demographics:** Has basic investing knowledge (401k, maybe some ETFs), $500-$5000 available
+- **Experience Level:** Understands concepts like sectors, P&L, but wants AI to do the technical analysis
+- **Portfolio Sophistication:** Wants portfolio allocation breakdown, performance comparison to benchmarks
+- **Algorithm Expectations:** Clear explanations of algorithm reasoning, ability to review decisions
+- **Key Needs:** Understanding algorithm decisions, sector diversification visibility, performance metrics
+- **Interface Preferences:** Professional credibility balanced with accessible explanations
+
+**Tertiary Persona: Busy Professional Seeking Passive Growth**
+- **Demographics:** High earner, no time for active trading, $1000-$10000 available
+- **Goals:** Set-and-forget growth, monthly performance summaries, risk management
+- **Portfolio Management:** Quick portfolio health check, performance trending, benchmark comparisons  
+- **Algorithm Expectations:** Professional-grade decisions with minimal intervention required
+- **Dashboard Needs:** Efficient overview, emergency stop access, performance attribution
+- **Time Constraints:** Wants comprehensive data available but condensed into quick insights
 
 #### Usability Goals
 
@@ -57,6 +68,8 @@ This document defines the user experience goals, information architecture, user 
 
 ### Site Map / Screen Inventory
 
+**Jobs-Based Information Architecture:** Navigation structure organized around core user jobs rather than technical features.
+
 ```mermaid
 graph TD
     A[Landing/Login] --> B[Onboarding Flow]
@@ -67,37 +80,59 @@ graph TD
     B --> B3["Paper Trading Tutorial<br/>(Hands-on practice)"]
     B --> B4["Comprehension Validation<br/>(Quiz checkpoints)"]
     
-    C --> D["Account Overview<br/>(Always visible)"]
-    C --> E["Performance Tracking<br/>(Simple charts)"]
-    C --> F["Express Authorization<br/>(Time-based control)"]
-    C --> G["Emergency Stop<br/>(Always prominent)"]
+    C --> D["Control Center<br/>(Safety Jobs)"]
+    C --> E["Portfolio Understanding<br/>(Comprehension Jobs)"]
+    C --> F["Algorithm Transparency<br/>(Trust-Building Jobs)"]
+    C --> G["Performance Validation<br/>(Progress Jobs)"]
     
-    D --> D1["Balance Display"]
-    D --> D2["Today's Change"]
-    D --> D3["Algorithm Status"]
+    D --> D1["Session Management"]
+    D --> D2["Emergency Stop"]
+    D --> D3["Authorization Controls"]
+    D --> D4["Risk Limits Status"]
     
-    E --> E1["Win/Loss Progress"]
-    E --> E2["Account Growth Chart"]
-    E --> E3["Recent Trade List"]
+    E --> E1["Current Positions<br/>(What do I own?)"]
+    E --> E2["Sector Allocation<br/>(Am I diversified?)"]
+    E --> E3["P&L Summary<br/>(Am I winning?)"]
+    E --> E4["Top Gainers/Losers<br/>(What's working?)"]
     
-    F --> F1["Time Selection"]
-    F --> F2["Risk Confirmation"]
-    F --> F3["Authorization Countdown"]
+    F --> F1["Recent Decisions<br/>(Why did AI do that?)"]
+    F --> F2["Market Analysis<br/>(What is AI seeing?)"]
+    F --> F3["Strategy Performance<br/>(Which approach works?)"]
+    F --> F4["Algorithm Status<br/>(Is AI healthy?)"]
+    
+    G --> G1["Performance Metrics<br/>(How am I doing?)"]
+    G --> G2["Win/Loss Ratios<br/>(Am I successful?)"]
+    G --> G3["Growth Tracking<br/>(Am I progressing?)"]
+    G --> G4["Benchmark Comparison<br/>(vs Market/Goals)"]
 ```
 
 ### Navigation Structure
 
-**Primary Navigation Philosophy:** Banking app familiarity with simplified dashboard approach
-- **Desktop**: Persistent left sidebar with main content area (dashboard-style layout)
-- **Tablet**: Collapsible sidebar maintaining same visual hierarchy
-- **Mobile**: Bottom navigation bar with vertically stacked content
+**Jobs-Based Navigation Philosophy:** Navigation organized around user jobs rather than technical features, maintaining banking app familiarity with ultra-simple dashboard approach.
 
-**Core Navigation Elements:**
-- **Account Overview** (home icon) - Always visible balance and algorithm status
-- **Performance** (chart icon) - Simple progress tracking and trade history
-- **Authorization** (clock icon) - Time-based trading control with countdown
-- **Settings** (gear icon) - User preferences and help resources
-- **Emergency Stop** (large red button) - Persistent top-right placement across all screens
+**Primary Navigation (Job-Centered):**
+- **Desktop**: Persistent left sidebar with job-based sections and always-visible emergency controls
+- **Tablet**: Collapsible sidebar maintaining job hierarchy and safety-first approach
+- **Mobile**: Bottom navigation with safety controls persistent at top
+
+**Core Navigation Elements (Organized by Jobs):**
+
+**1. Control Center (Safety Jobs) - Primary Position**
+- **Session Control** (🎯 target icon) - "Am I in control?" - Authorization and session management
+- **Emergency Stop** (🛑 stop icon) - "Stop everything now!" - Always prominent, all screens
+- **Risk Monitor** (⚠️ warning icon) - "Am I safe?" - Current limits and risk status
+
+**2. Portfolio Understanding (Comprehension Jobs) - Secondary**
+- **My Holdings** (💼 briefcase icon) - "What do I own?" - Current positions and allocation
+- **Performance** (📈 chart icon) - "How am I doing?" - P&L, growth tracking, benchmarks
+
+**3. Algorithm Insights (Trust-Building Jobs) - Tertiary**
+- **AI Decisions** (🧠 brain icon) - "Why did AI do that?" - Recent decisions and reasoning
+- **Market View** (👁️ eye icon) - "What is AI seeing?" - Market analysis and strategy status
+
+**4. Settings & Help (Support Jobs) - Contextual**
+- **Settings** (⚙️ gear icon) - User preferences and account management
+- **Help & Learn** (❓ question icon) - Educational resources and support
 
 **Secondary Navigation Strategy:**
 - **Progressive Disclosure**: Advanced features behind "Tell me more" links
@@ -487,6 +522,110 @@ graph TD
 - Mobile version emphasizes accessibility during stressful moments
 
 **Design File Reference:** [Loss_Recovery_v1.fig - Frames 19-21]
+
+---
+
+## Responsiveness Strategy
+
+### Breakpoints
+
+**Competitive-Analysis-Informed Breakpoint Strategy:**
+
+| Breakpoint | Min Width | Max Width | Target Devices | Portfolio Display Strategy |
+|------------|-----------|-----------|----------------|---------------------------|
+| **Mobile** | 320px | 768px | Cautious First-Timers on phones | Card-stack with swipe navigation, floating emergency button |
+| **Tablet** | 769px | 1024px | All personas, mixed usage | Dual-column layout, collapsible panels, header emergency controls |
+| **Desktop** | 1025px | 1440px | Professional users, detailed analysis | Multi-column dashboard, all data visible, comprehensive charts |
+| **Wide** | 1441px | - | Advanced traders, multiple monitors | Side-by-side views, expanded analytics, professional-grade interface |
+
+### Adaptation Patterns
+
+**Mobile-First Responsive Architecture (320-768px):**
+
+**Layout Changes:**
+- **Card-Stack Portfolio Display:** Vertical scrolling with clear hierarchy (Total Value → Individual Positions → Details)
+- **Floating Emergency Button:** Always-visible red FAB in bottom-right with thumb-reachable positioning
+- **Progressive Data Disclosure:** Summary cards expand to reveal intermediate details, then full analysis
+- **Single-Column Navigation:** Bottom tab bar with portfolio as primary section
+- **Sticky Portfolio Summary:** Total value and daily change remain visible while scrolling positions
+
+**Navigation Changes:**
+- **Bottom Tab Pattern:** Primary functions (Portfolio, Control, Performance, AI Insights) always accessible
+- **Context-Aware Header:** Emergency controls and session status in persistent top bar
+- **Swipe Gestures:** Horizontal swipe between portfolio positions, vertical scroll through position list
+- **Quick Actions:** Swipe-down from top reveals emergency controls and session management
+- **Minimal Navigation Depth:** Maximum 2 taps to reach any core functionality
+
+**Content Priority:**
+- **Safety-First Hierarchy:** Emergency stop and session controls most prominent
+- **Essential Data Only:** Portfolio total, today's change, active positions, algorithm status
+- **Algorithm Transparency:** "Why AI did this" explanations prominent but collapsible
+- **Educational Integration:** Contextual tooltips and help without overwhelming interface
+- **Trust-Building Elements:** Clear algorithm status and decision reasoning visible
+
+**Interaction Changes:**
+- **Touch-Optimized Controls:** Minimum 44px touch targets, generous spacing around interactive elements
+- **Gesture Support:** Pull-to-refresh for manual data updates, swipe actions on position cards
+- **Haptic Feedback:** Tactile confirmation for emergency stop and authorization actions
+- **Voice Accessibility:** Emergency stop accessible via voice commands for accessibility
+- **One-Handed Usage:** All critical controls reachable with thumb in standard phone grip
+
+### Mobile Portfolio Management Patterns
+
+**Based on competitive analysis of successful trading apps:**
+
+**Card-Stack Architecture (Inspired by Robinhood + Banking Apps):**
+- **Portfolio Summary Card:** Large total value with prominent daily change indicator
+- **Position Cards:** Individual stock holdings with swipe-to-reveal details
+- **Performance Cards:** Win/loss ratios and growth tracking with visual progress indicators
+- **Algorithm Cards:** Recent AI decisions with plain-English explanations
+
+**Emergency Control Innovation (Superior to Traditional Apps):**
+- **Floating Action Button:** Red emergency stop always visible, never hidden in menus
+- **Two-Step Confirmation:** Impact preview before execution ("This will close 3 positions")
+- **Process Transparency:** Real-time status updates during emergency stop execution
+- **Quick Recovery:** Option to restart trading after cooling-off period
+
+**Progressive Data Disclosure (Best of E-Trade + Betterment):**
+- **Level 1:** Portfolio total, daily change, algorithm status
+- **Level 2:** Individual positions, sector allocation, recent decisions
+- **Level 3:** Detailed analytics, performance attribution, strategy breakdown
+- **Educational Overlays:** Contextual explanations available at each level
+
+**Algorithm Transparency (Exceeding Robo-Advisor Standards):**
+- **Decision Timeline:** Chronological list of AI actions with reasoning
+- **Market Context:** "AI saw this market condition and decided to..."
+- **Performance Attribution:** "This decision contributed $X to your returns"
+- **Learning Integration:** "Here's what this means for your portfolio"
+
+### Tablet & Desktop Enhancements
+
+**Tablet Optimization (769-1024px):**
+- **Dual-Column Layout:** Portfolio summary and controls left, detailed positions right
+- **Collapsible Panels:** Expandable sections for advanced features without overwhelming beginners
+- **Enhanced Visualizations:** Larger charts and graphs with interactive elements
+- **Persistent Emergency Controls:** Header-based emergency stop with desktop-style confirmation
+
+**Desktop Excellence (1025px+):**
+- **Multi-Column Dashboard:** All critical data visible without scrolling
+- **Professional Features:** Advanced analytics and detailed performance attribution
+- **Comprehensive Charts:** Full-size visualizations with multiple timeframes and indicators
+- **Efficient Workflows:** Keyboard shortcuts and rapid navigation for power users
+
+### Performance Considerations
+
+**Mobile Performance Optimization:**
+- **Selective Real-Time Updates:** Only update visible portfolio data to preserve battery and performance
+- **Batch Update Strategy:** Group multiple price changes into single render cycles
+- **Connection-Aware:** Graceful degradation when real-time data unavailable
+- **Manual Refresh Control:** Pull-to-refresh for user-controlled data updates
+- **Optimized Asset Loading:** Progressive image loading and efficient API calls
+
+**Cross-Device Consistency:**
+- **Synchronized State Management:** Portfolio data consistent across all devices
+- **Responsive Component Library:** Same components adapt fluidly across breakpoints
+- **Progressive Enhancement:** Core functionality works on all devices, advanced features enhance experience on capable devices
+- **Accessibility Compliance:** Touch, mouse, and keyboard interactions supported across all screen sizes
 
 ---
 
