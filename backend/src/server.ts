@@ -10,6 +10,10 @@ import tradingRoutes from '@/routes/trading.routes';
 import sessionRoutes from '@/routes/session.routes';
 import { profileRoutes } from '@/routes/profile.routes';
 import onboardingRoutes from '@/routes/onboarding.routes';
+import marketDataRoutes from '@/routes/marketData.routes';
+import algorithmRoutes from '@/routes/algorithm.routes';
+import decisionEngineRoutes from '@/routes/decisionEngine.routes';
+import performanceMonitoringRoutes from '@/routes/performanceMonitoring.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
 // Load environment variables
@@ -64,6 +68,10 @@ app.use('/api/v1/portfolio', portfolioRoutes);
 app.use('/api/v1/trading', tradingRoutes);
 app.use('/api/v1/sessions', sessionRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/market-data', marketDataRoutes);
+app.use('/api/v1/algorithm', algorithmRoutes);
+app.use('/api/v1/decision-engine', decisionEngineRoutes);
+app.use('/api/v1/performance', performanceMonitoringRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

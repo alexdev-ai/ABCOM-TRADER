@@ -1,185 +1,468 @@
+import WebSocket from 'ws';
+import Redis from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
-interface StockQuote {
+interface MarketDataPoint {
   symbol: string;
   price: number;
-  change: number;
-  changePercent: number;
   volume: number;
-  lastUpdated: Date;
+  timestamp: Date;
+  timeframe: '1min' | '5min' | '15min' | 'daily';
+  open: number;
+  high: number;
+  low: number;
+  close: number;
 }
 
-interface MarketDataResponse {
-  success: boolean;
-  data?: StockQuote;
-  error?: string;
+interface MarketCondition {
+  regime: 'HIGH_VOLATILITY' | 'TRENDING' | 'RANGING';
+  vixLevel: number;
+  trendStrength: number;
+  volumeProfile: 'SPIKE' | 'NORMAL' | 'LOW';
+  sectorRotation: any;
+  riskMultiplier: number;
+}
+
+interface GapScanner {
+  symbol: string;
+  gapPercentage: number;
+  preMarketVolume: number;
+  volumeMultiple: number;
+  newsEvents: string[];
+  earningsReaction: boolean;
 }
 
 class MarketDataService {
-  // Popular demo stocks with realistic base prices
-  private readonly DEMO_STOCKS = {
-    'AAPL': { basePrice: 175.00, name: 'Apple Inc.' },
-    'GOOGL': { basePrice: 125.00, name: 'Alphabet Inc.' },
-    'MSFT': { basePrice: 350.00, name: 'Microsoft Corporation' },
-    'AMZN': { basePrice: 145.00, name: 'Amazon.com Inc.' },
-    'TSLA': { basePrice: 240.00, name: 'Tesla Inc.' },
-    'NVDA': { basePrice: 450.00, name: 'NVIDIA Corporation' },
-    'JPM': { basePrice: 145.00, name: 'JPMorgan Chase & Co.' },
-    'JNJ': { basePrice: 160.00, name: 'Johnson & Johnson' },
-    'V': { basePrice: 250.00, name: 'Visa Inc.' },
-    'PG': { basePrice: 155.00, name: 'Procter & Gamble Co.' }
-  };
+  private alpacaStream: WebSocket | null = null;
+  private redis: Redis;
+  private prisma: PrismaClient;
+  private isMarketOpen: boolean = false;
+  private marketOpenTime = '09:30:00';
+  private marketCloseTime = '16:00:00';
+  
+  // Top 500 stocks by volume (sample - would be dynamically updated)
+  private watchedSymbols: string[] = [
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'NFLX',
+    'AMD', 'INTC', 'CRM', 'ADBE', 'PYPL', 'SHOP', 'SQ', 'ROKU'
+    // ... would include top 500 by volume
+  ];
+
+  constructor() {
+    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.prisma = new PrismaClient();
+  }
 
   /**
-   * Get current stock price (simulated)
+   * Initialize real-time market data streaming
+   * Implements Alpaca WebSocket integration for live price feeds
    */
-  async getStockPrice(symbol: string): Promise<MarketDataResponse> {
+  async initializeMarketDataStream(): Promise<void> {
     try {
-      // Check if symbol exists in our demo stocks
-      const stockInfo = this.DEMO_STOCKS[symbol.toUpperCase() as keyof typeof this.DEMO_STOCKS];
-      if (!stockInfo) {
-        return {
-          success: false,
-          error: `Stock symbol ${symbol} not found in demo data`
-        };
-      }
-
-      // Try to get from database first
-      const existingPrice = await prisma.stockPrice.findFirst({
-        where: { symbol: symbol.toUpperCase() },
-        orderBy: { lastUpdated: 'desc' }
-      });
-
-      const now = new Date();
-      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-
-      // If we have recent data (less than 5 minutes old), return it
-      if (existingPrice && existingPrice.lastUpdated > fiveMinutesAgo) {
-        return {
-          success: true,
-          data: {
-            symbol: existingPrice.symbol,
-            price: parseFloat(existingPrice.price.toString()),
-            change: parseFloat(existingPrice.change.toString()),
-            changePercent: parseFloat(existingPrice.changePercent.toString()),
-            volume: existingPrice.volume,
-            lastUpdated: existingPrice.lastUpdated
-          }
-        };
-      }
-
-      // Generate new simulated price
-      const simulatedQuote = this.generateSimulatedPrice(symbol.toUpperCase(), stockInfo.basePrice);
-
-      // Store in database
-      await prisma.stockPrice.create({
-        data: {
-          symbol: simulatedQuote.symbol,
-          price: simulatedQuote.price,
-          change: simulatedQuote.change,
-          changePercent: simulatedQuote.changePercent,
-          volume: simulatedQuote.volume,
-          lastUpdated: now
-        }
-      });
-
-      return {
-        success: true,
-        data: simulatedQuote
-      };
-
-    } catch (error) {
-      console.error('Market data service error:', error);
-      return {
-        success: false,
-        error: 'Failed to fetch market data'
-      };
-    }
-  }
-
-  /**
-   * Get multiple stock prices
-   */
-  async getMultipleStockPrices(symbols: string[]): Promise<{ [symbol: string]: StockQuote }> {
-    const results: { [symbol: string]: StockQuote } = {};
-
-    for (const symbol of symbols) {
-      const response = await this.getStockPrice(symbol);
-      if (response.success && response.data) {
-        results[symbol.toUpperCase()] = response.data;
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Generate simulated stock price with realistic movement
-   */
-  private generateSimulatedPrice(symbol: string, basePrice: number): StockQuote {
-    // Generate realistic price movement (-5% to +5% from base)
-    const randomFactor = (Math.random() - 0.5) * 0.1; // -5% to +5%
-    const currentPrice = basePrice * (1 + randomFactor);
-    
-    // Calculate daily change (simulated)
-    const dailyChangeFactor = (Math.random() - 0.5) * 0.06; // -3% to +3% daily change
-    const previousPrice = currentPrice / (1 + dailyChangeFactor);
-    const change = currentPrice - previousPrice;
-    const changePercent = (change / previousPrice) * 100;
-
-    // Generate realistic volume
-    const baseVolume = Math.floor(Math.random() * 10000000) + 1000000; // 1M to 11M shares
-
-    return {
-      symbol,
-      price: Math.round(currentPrice * 100) / 100, // Round to 2 decimal places
-      change: Math.round(change * 100) / 100,
-      changePercent: Math.round(changePercent * 100) / 100,
-      volume: baseVolume,
-      lastUpdated: new Date()
-    };
-  }
-
-  /**
-   * Get list of available demo stocks
-   */
-  getAvailableStocks(): Array<{ symbol: string; name: string; basePrice: number }> {
-    return Object.entries(this.DEMO_STOCKS).map(([symbol, info]) => ({
-      symbol,
-      name: info.name,
-      basePrice: info.basePrice
-    }));
-  }
-
-  /**
-   * Initialize demo stock prices in database
-   */
-  async initializeDemoData(): Promise<void> {
-    try {
-      const symbols = Object.keys(this.DEMO_STOCKS);
+      const alpacaWsUrl = process.env.ALPACA_WS_URL || 'wss://stream.data.alpaca.markets/v2/iex';
       
-      for (const symbol of symbols) {
-        // Check if we already have recent data
-        const existing = await prisma.stockPrice.findFirst({
-          where: { symbol },
-          orderBy: { lastUpdated: 'desc' }
-        });
+      this.alpacaStream = new WebSocket(alpacaWsUrl);
+      
+      this.alpacaStream.on('open', () => {
+        console.log('🔥 Alpaca WebSocket connected - Market Open Domination ready!');
+        this.authenticateAlpacaStream();
+        this.subscribeToMarketData();
+      });
 
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      this.alpacaStream.on('message', (data: WebSocket.Data) => {
+        this.processMarketDataMessage(data);
+      });
+
+      this.alpacaStream.on('error', (error: Error) => {
+        console.error('❌ Alpaca WebSocket error:', error);
+        this.handleStreamError(error);
+      });
+
+      this.alpacaStream.on('close', () => {
+        console.log('⚠️ Alpaca WebSocket disconnected - Attempting reconnection...');
+        this.reconnectStream();
+      });
+
+    } catch (error) {
+      console.error('💥 Failed to initialize market data stream:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Authenticate with Alpaca WebSocket API
+   */
+  private authenticateAlpacaStream(): void {
+    const authMessage = {
+      action: 'auth',
+      key: process.env.ALPACA_API_KEY,
+      secret: process.env.ALPACA_SECRET_KEY
+    };
+    
+    this.alpacaStream?.send(JSON.stringify(authMessage));
+  }
+
+  /**
+   * Subscribe to market data for watched symbols
+   * Focus on top 500 stocks by volume for opportunistic hunting
+   */
+  private subscribeToMarketData(): void {
+    const subscribeMessage = {
+      action: 'subscribe',
+      trades: this.watchedSymbols,
+      quotes: this.watchedSymbols,
+      bars: this.watchedSymbols
+    };
+    
+    this.alpacaStream?.send(JSON.stringify(subscribeMessage));
+    console.log(`📊 Subscribed to ${this.watchedSymbols.length} symbols for market data`);
+  }
+
+  /**
+   * Process incoming market data messages
+   * Implements multi-timeframe analysis and caching
+   */
+  private async processMarketDataMessage(data: WebSocket.Data): Promise<void> {
+    try {
+      const message = JSON.parse(data.toString());
+      
+      if (message.T === 't') { // Trade data
+        await this.processTradeData(message);
+      } else if (message.T === 'q') { // Quote data
+        await this.processQuoteData(message);
+      } else if (message.T === 'b') { // Bar data
+        await this.processBarData(message);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error processing market data:', error);
+    }
+  }
+
+  /**
+   * Process trade data for real-time analysis
+   */
+  private async processTradeData(trade: any): Promise<void> {
+    const marketData: MarketDataPoint = {
+      symbol: trade.S,
+      price: trade.p,
+      volume: trade.s,
+      timestamp: new Date(trade.t),
+      timeframe: '1min',
+      open: trade.p,
+      high: trade.p,
+      low: trade.p,
+      close: trade.p
+    };
+
+    // Cache in Redis for real-time access
+    await this.cacheMarketData(marketData);
+    
+    // Check for market open opportunities
+    if (this.isWithinMarketOpenWindow()) {
+      await this.scanForMarketOpenOpportunities(marketData);
+    }
+    
+    // Update multi-timeframe analysis
+    await this.updateMultiTimeframeAnalysis(marketData);
+  }
+
+  /**
+   * Market Open Domination - Scan for opportunities in first 30 minutes
+   */
+  private async scanForMarketOpenOpportunities(data: MarketDataPoint): Promise<void> {
+    try {
+      // Gap detection (>2% moves)
+      const previousClose = await this.getPreviousClose(data.symbol);
+      const gapPercentage = ((data.price - previousClose) / previousClose) * 100;
+      
+      if (Math.abs(gapPercentage) > 2) {
+        // Volume confirmation (>2x average)
+        const averageVolume = await this.getAverageVolume(data.symbol);
+        const volumeMultiple = data.volume / averageVolume;
         
-        // Only create if no recent data exists
-        if (!existing || existing.lastUpdated < oneHourAgo) {
-          await this.getStockPrice(symbol); // This will create new data
+        if (volumeMultiple > 2) {
+          const gapOpportunity: GapScanner = {
+            symbol: data.symbol,
+            gapPercentage,
+            preMarketVolume: data.volume,
+            volumeMultiple,
+            newsEvents: await this.getNewsEvents(data.symbol),
+            earningsReaction: await this.isEarningsReaction(data.symbol)
+          };
+          
+          // Cache opportunity for algorithm processing
+          await this.redis.setex(
+            `gap_opportunity:${data.symbol}`,
+            300, // 5 minutes
+            JSON.stringify(gapOpportunity)
+          );
+          
+          console.log(`🎯 GAP OPPORTUNITY: ${data.symbol} ${gapPercentage.toFixed(2)}% gap with ${volumeMultiple.toFixed(1)}x volume`);
         }
       }
-
-      console.log('✅ Demo market data initialized');
+      
     } catch (error) {
-      console.error('Failed to initialize demo market data:', error);
+      console.error('❌ Error scanning market open opportunities:', error);
     }
+  }
+
+  /**
+   * Check if current time is within market open window (9:30-10:00 EST)
+   */
+  private isWithinMarketOpenWindow(): boolean {
+    const now = new Date();
+    const currentTime = now.toTimeString().substr(0, 8);
+    const marketOpenEnd = '10:00:00';
+    
+    return this.isMarketOpen && 
+           currentTime >= this.marketOpenTime && 
+           currentTime <= marketOpenEnd;
+  }
+
+  /**
+   * Multi-timeframe analysis for confluence signals
+   */
+  private async updateMultiTimeframeAnalysis(data: MarketDataPoint): Promise<void> {
+    // Update 1-minute timeframe (scalping/entry timing)
+    await this.updateTimeframeData(data, '1min');
+    
+    // Aggregate to 5-minute timeframe (primary signals)
+    if (this.shouldUpdateTimeframe('5min')) {
+      await this.aggregateTimeframeData(data.symbol, '5min');
+    }
+    
+    // Aggregate to 15-minute timeframe (trend confirmation)
+    if (this.shouldUpdateTimeframe('15min')) {
+      await this.aggregateTimeframeData(data.symbol, '15min');
+    }
+  }
+
+  /**
+   * Cache market data in Redis for high-frequency access
+   */
+  private async cacheMarketData(data: MarketDataPoint): Promise<void> {
+    const cacheKey = `market_data:${data.symbol}:${data.timeframe}`;
+    const cacheData = {
+      ...data,
+      timestamp: data.timestamp.toISOString()
+    };
+    
+    // Cache for 1 minute for real-time access
+    await this.redis.setex(cacheKey, 60, JSON.stringify(cacheData));
+    
+    // Also maintain latest price cache
+    await this.redis.setex(`latest_price:${data.symbol}`, 30, data.price.toString());
+  }
+
+  /**
+   * Market regime detection for strategy selection
+   */
+  async detectMarketRegime(): Promise<MarketCondition> {
+    try {
+      // Get VIX level
+      const vixLevel = await this.getVIXLevel();
+      
+      // Analyze market trend strength
+      const trendStrength = await this.analyzeTrendStrength();
+      
+      // Get volume profile
+      const volumeProfile = await this.analyzeVolumeProfile();
+      
+      let regime: 'HIGH_VOLATILITY' | 'TRENDING' | 'RANGING';
+      let riskMultiplier: number;
+      
+      if (vixLevel > 25 && volumeProfile === 'SPIKE') {
+        regime = 'HIGH_VOLATILITY';
+        riskMultiplier = 1.5; // Increase position sizes in high volatility
+      } else if (trendStrength > 0.7) {
+        regime = 'TRENDING';
+        riskMultiplier = 1.2;
+      } else {
+        regime = 'RANGING';
+        riskMultiplier = 0.8;
+      }
+      
+      const marketCondition: MarketCondition = {
+        regime,
+        vixLevel,
+        trendStrength,
+        volumeProfile,
+        sectorRotation: await this.analyzeSectorRotation(),
+        riskMultiplier
+      };
+      
+      // Cache market regime for algorithm access
+      await this.redis.setex('market_regime', 300, JSON.stringify(marketCondition));
+      
+      return marketCondition;
+      
+    } catch (error) {
+      console.error('❌ Error detecting market regime:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Options flow integration for directional bias
+   */
+  async getOptionsFlowSignal(symbol: string): Promise<any> {
+    try {
+      // This would integrate with third-party options flow provider
+      // For now, return mock structure
+      const optionsFlow = {
+        symbol,
+        putCallRatio: 0.75, // Bullish bias
+        unusualActivity: true,
+        volumeSpike: 3.2, // 3.2x average volume
+        institutionalFlow: 'BULLISH',
+        confidence: 0.85
+      };
+      
+      // Cache options flow data
+      await this.redis.setex(
+        `options_flow:${symbol}`,
+        300,
+        JSON.stringify(optionsFlow)
+      );
+      
+      return optionsFlow;
+      
+    } catch (error) {
+      console.error('❌ Error getting options flow:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get earnings calendar and reaction data
+   */
+  async getEarningsData(symbol: string): Promise<any> {
+    try {
+      // Mock earnings data - would integrate with earnings calendar API
+      const earningsData = {
+        symbol,
+        earningsDate: new Date(),
+        expectedMove: 0.05, // 5% expected move
+        actualSurprise: 0.02, // 2% positive surprise
+        guidance: 'RAISED',
+        reactionType: 'MOMENTUM_CONTINUATION'
+      };
+      
+      return earningsData;
+      
+    } catch (error) {
+      console.error('❌ Error getting earnings data:', error);
+      return null;
+    }
+  }
+
+  // Helper methods
+  private async getPreviousClose(symbol: string): Promise<number> {
+    // Implementation would fetch previous close from database or API
+    return 100; // Mock value
+  }
+
+  private async getAverageVolume(symbol: string): Promise<number> {
+    // Implementation would calculate 20-day average volume
+    return 1000000; // Mock value
+  }
+
+  private async getNewsEvents(symbol: string): Promise<string[]> {
+    // Implementation would fetch news events from news API
+    return ['Earnings beat', 'Analyst upgrade']; // Mock values
+  }
+
+  private async isEarningsReaction(symbol: string): Promise<boolean> {
+    // Implementation would check if stock reported earnings recently
+    return false; // Mock value
+  }
+
+  private shouldUpdateTimeframe(timeframe: string): boolean {
+    // Logic to determine when to aggregate timeframes
+    return true; // Simplified for now
+  }
+
+  private async updateTimeframeData(data: MarketDataPoint, timeframe: string): Promise<void> {
+    // Update specific timeframe data
+  }
+
+  private async aggregateTimeframeData(symbol: string, timeframe: string): Promise<void> {
+    // Aggregate data to higher timeframes
+  }
+
+  private async getVIXLevel(): Promise<number> {
+    // Fetch current VIX level
+    return 20; // Mock value
+  }
+
+  private async analyzeTrendStrength(): Promise<number> {
+    // Calculate market trend strength
+    return 0.6; // Mock value
+  }
+
+  private async analyzeVolumeProfile(): Promise<'SPIKE' | 'NORMAL' | 'LOW'> {
+    // Analyze current volume profile
+    return 'NORMAL'; // Mock value
+  }
+
+  private async analyzeSectorRotation(): Promise<any> {
+    // Analyze sector rotation patterns
+    return { leading: 'Technology', lagging: 'Utilities' }; // Mock value
+  }
+
+  private processQuoteData(quote: any): void {
+    // Process bid/ask quote data
+  }
+
+  private processBarData(bar: any): void {
+    // Process bar/candlestick data
+  }
+
+  private handleStreamError(error: Error): void {
+    // Handle stream errors and implement retry logic
+    console.error('Stream error handled:', error.message);
+  }
+
+  private reconnectStream(): void {
+    // Implement reconnection logic with exponential backoff
+    setTimeout(() => {
+      console.log('🔄 Reconnecting to market data stream...');
+      this.initializeMarketDataStream();
+    }, 5000);
+  }
+
+  /**
+   * Get cached market data for algorithm consumption
+   */
+  async getMarketData(symbol: string, timeframe: string = '5min'): Promise<MarketDataPoint | null> {
+    try {
+      const cached = await this.redis.get(`market_data:${symbol}:${timeframe}`);
+      if (cached) {
+        const data = JSON.parse(cached);
+        data.timestamp = new Date(data.timestamp);
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting cached market data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clean shutdown
+   */
+  async shutdown(): Promise<void> {
+    console.log('🛑 Shutting down market data service...');
+    
+    if (this.alpacaStream) {
+      this.alpacaStream.close();
+    }
+    
+    await this.redis.quit();
+    await this.prisma.$disconnect();
   }
 }
 
-export default new MarketDataService();
+export default MarketDataService;
+export { MarketDataPoint, MarketCondition, GapScanner };
