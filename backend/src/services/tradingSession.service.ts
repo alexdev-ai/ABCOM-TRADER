@@ -166,7 +166,28 @@ export class TradingSessionService {
         return updated;
       });
 
-      console.log(`Trading session started: ${sessionId}`);
+      // Schedule background monitoring and expiration
+      try {
+        const backgroundProcessor = await getBackgroundProcessor();
+        
+        // Schedule session expiration job
+        if (session.endTime) {
+          await backgroundProcessor.scheduleSessionExpiration(sessionId, userId, session.endTime);
+        }
+        
+        // Start real-time loss limit monitoring via background processor
+        await backgroundProcessor.startSessionMonitoring(sessionId, userId);
+
+        // Also start real-time monitoring via SessionMonitoringService
+        const { default: sessionMonitoringService } = await import('./sessionMonitoring.service');
+        await sessionMonitoringService.startSessionMonitoring(sessionId);
+        
+        console.log(`Trading session started with comprehensive monitoring: ${sessionId}`);
+      } catch (bgError) {
+        console.error('Failed to start background monitoring:', bgError);
+        // Continue - session is still started even if background monitoring fails
+      }
+
       return updatedSession;
 
     } catch (error) {
