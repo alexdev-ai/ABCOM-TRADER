@@ -1,5 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { sessionApi, type SessionHistoryItem, type SessionHistoryResponse } from '../services/sessionApi';
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter
+} from 'recharts';
 
 interface FilterOptions {
   dateFrom?: string;
@@ -172,6 +191,58 @@ export const SessionHistoryPage: React.FC = () => {
   const profitableSessions = sessions.filter(session => session.realizedPnl > 0).length;
   const winRate = totalSessions > 0 ? (profitableSessions / totalSessions) * 100 : 0;
 
+  // Prepare chart data
+  const performanceChartData = sessions
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((session, index) => ({
+      sessionNumber: index + 1,
+      date: new Date(session.createdAt).toLocaleDateString(),
+      pnl: session.realizedPnl,
+      cumulativePnL: sessions
+        .slice(0, index + 1)
+        .reduce((sum, s) => sum + s.realizedPnl, 0),
+      trades: session.totalTrades,
+      duration: session.actualDurationMinutes || session.durationMinutes,
+      performance: session.sessionPerformancePercentage || 0,
+      winLoss: session.realizedPnl > 0 ? 'Win' : session.realizedPnl < 0 ? 'Loss' : 'Neutral'
+    }));
+
+  const winLossData = [
+    { name: 'Profitable Sessions', value: profitableSessions, color: '#22c55e' },
+    { name: 'Loss Sessions', value: totalSessions - profitableSessions, color: '#ef4444' }
+  ];
+
+  const durationVsPerformanceData = sessions.map(session => ({
+    duration: session.actualDurationMinutes || session.durationMinutes,
+    performance: session.sessionPerformancePercentage || 0,
+    pnl: session.realizedPnl,
+    trades: session.totalTrades
+  }));
+
+  const monthlyPerformanceData = sessions.reduce((acc, session) => {
+    const month = new Date(session.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    const existing = acc.find(item => item.month === month);
+    if (existing) {
+      existing.pnl += session.realizedPnl;
+      existing.sessions += 1;
+      existing.trades += session.totalTrades;
+    } else {
+      acc.push({
+        month,
+        pnl: session.realizedPnl,
+        sessions: 1,
+        trades: session.totalTrades,
+        avgPnL: session.realizedPnl
+      });
+    }
+    return acc;
+  }, [] as Array<{ month: string; pnl: number; sessions: number; trades: number; avgPnL: number }>)
+  .map(item => ({ ...item, avgPnL: item.pnl / item.sessions }))
+  .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+
+  const [selectedChart, setSelectedChart] = useState<'performance' | 'cumulative' | 'duration' | 'monthly'>('performance');
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
       {/* Header */}
@@ -232,6 +303,233 @@ export const SessionHistoryPage: React.FC = () => {
           <div className="text-sm text-gray-600">Avg per Session</div>
         </div>
       </div>
+
+      {/* Performance Analytics Charts */}
+      {sessions.length > 0 && (
+        <div className="mb-6">
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Performance Analytics</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedChart('performance')}
+                  className={`px-3 py-1 text-sm rounded-md ${selectedChart === 'performance' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Session P&L
+                </button>
+                <button
+                  onClick={() => setSelectedChart('cumulative')}
+                  className={`px-3 py-1 text-sm rounded-md ${selectedChart === 'cumulative' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Cumulative P&L
+                </button>
+                <button
+                  onClick={() => setSelectedChart('duration')}
+                  className={`px-3 py-1 text-sm rounded-md ${selectedChart === 'duration' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Duration vs Performance
+                </button>
+                <button
+                  onClick={() => setSelectedChart('monthly')}
+                  className={`px-3 py-1 text-sm rounded-md ${selectedChart === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Monthly Trends
+                </button>
+              </div>
+            </div>
+
+            <div className="h-80">
+              {selectedChart === 'performance' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={performanceChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="sessionNumber" 
+                      label={{ value: 'Session Number', position: 'insideBottom', offset: -5 }}
+                    />
+                    <YAxis 
+                      label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
+                      tickFormatter={(value) => `$${value}`}
+                    />
+                    <Tooltip 
+                      formatter={(value, name) => [`$${value}`, 'P&L']}
+                      labelFormatter={(label) => `Session ${label}`}
+                    />
+                    <Bar 
+                      dataKey="pnl" 
+                      name="Session P&L"
+                    >
+                      {performanceChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+
+              {selectedChart === 'cumulative' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={performanceChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="sessionNumber" 
+                      label={{ value: 'Session Number', position: 'insideBottom', offset: -5 }}
+                    />
+                    <YAxis 
+                      label={{ value: 'Cumulative P&L ($)', angle: -90, position: 'insideLeft' }}
+                      tickFormatter={(value) => `$${value}`}
+                    />
+                    <Tooltip 
+                      formatter={(value, name) => [`$${value}`, 'Cumulative P&L']}
+                      labelFormatter={(label) => `Session ${label}`}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="cumulativePnL" 
+                      stroke="#3b82f6" 
+                      fill="#dbeafe"
+                      name="Cumulative P&L"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+
+              {selectedChart === 'duration' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart data={durationVsPerformanceData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      type="number" 
+                      dataKey="duration" 
+                      name="Duration"
+                      label={{ value: 'Duration (minutes)', position: 'insideBottom', offset: -5 }}
+                    />
+                    <YAxis 
+                      type="number" 
+                      dataKey="performance" 
+                      name="Performance"
+                      label={{ value: 'Performance (%)', angle: -90, position: 'insideLeft' }}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip 
+                      formatter={(value, name) => {
+                        if (name === 'Duration') return [`${value} minutes`, 'Duration'];
+                        if (name === 'Performance') return [`${value}%`, 'Performance'];
+                        return [value, name];
+                      }}
+                      cursor={{ strokeDasharray: '3 3' }}
+                    />
+                    <Scatter 
+                      name="Sessions" 
+                      dataKey="performance" 
+                      fill="#8884d8"
+                    />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              )}
+
+              {selectedChart === 'monthly' && monthlyPerformanceData.length > 0 && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyPerformanceData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="month" 
+                      label={{ value: 'Month', position: 'insideBottom', offset: -5 }}
+                    />
+                    <YAxis 
+                      label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
+                      tickFormatter={(value) => `$${value}`}
+                    />
+                    <Tooltip 
+                      formatter={(value, name) => {
+                        if (name === 'Monthly P&L') return [`$${value}`, 'Total P&L'];
+                        if (name === 'Average P&L') return [`$${value}`, 'Avg per Session'];
+                        return [value, name];
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="pnl" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2}
+                      name="Monthly P&L"
+                      dot={{ fill: '#3b82f6' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="avgPnL" 
+                      stroke="#10b981" 
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      name="Average P&L"
+                      dot={{ fill: '#10b981' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Win/Loss Pie Chart */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Win/Loss Distribution</h3>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={winLossData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {winLossData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Performance Insights</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Best Session</span>
+                    <span className={`text-sm font-semibold ${getPnLColor(Math.max(...sessions.map(s => s.realizedPnl)))}`}>
+                      {formatCurrency(Math.max(...sessions.map(s => s.realizedPnl)))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Worst Session</span>
+                    <span className={`text-sm font-semibold ${getPnLColor(Math.min(...sessions.map(s => s.realizedPnl)))}`}>
+                      {formatCurrency(Math.min(...sessions.map(s => s.realizedPnl)))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Avg Session Duration</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {formatDuration(Math.round(sessions.reduce((sum, s) => sum + (s.actualDurationMinutes || s.durationMinutes), 0) / sessions.length))}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">Profitable Sessions</span>
+                    <span className="text-sm font-semibold text-green-600">
+                      {profitableSessions} of {totalSessions} ({winRate.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters Panel */}
       {showFilters && (
