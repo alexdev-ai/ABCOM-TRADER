@@ -15,6 +15,7 @@ import algorithmRoutes from '@/routes/algorithm.routes';
 import decisionEngineRoutes from '@/routes/decisionEngine.routes';
 import performanceMonitoringRoutes from '@/routes/performanceMonitoring.routes';
 import performanceAnalyticsRoutes from './routes/performanceAnalytics.routes';
+import tradeHistoryRoutes from './routes/tradeHistory.routes';
 import riskRoutes from '@/routes/risk.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
@@ -75,6 +76,7 @@ app.use('/api/v1/algorithm', algorithmRoutes);
 app.use('/api/v1/decision-engine', decisionEngineRoutes);
 app.use('/api/v1/performance', performanceMonitoringRoutes);
 app.use('/api/v1/performance-analytics', performanceAnalyticsRoutes);
+app.use('/api/v1/trade-history', tradeHistoryRoutes);
 app.use('/api/v1/risk', riskRoutes);
 
 // 404 handler
