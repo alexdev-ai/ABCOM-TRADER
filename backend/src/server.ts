@@ -7,7 +7,7 @@ import authRoutes from '@/routes/auth.routes';
 import fundingRoutes from '@/routes/funding.routes';
 import portfolioRoutes from '@/routes/portfolio.routes';
 import tradingRoutes from '@/routes/trading.routes';
-import sessionRoutes from '@/routes/session.routes.simple';
+import sessionRoutes from '@/routes/session.routes';
 import { profileRoutes } from '@/routes/profile.routes';
 import onboardingRoutes from '@/routes/onboarding.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';

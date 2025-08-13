@@ -1,22 +1,20 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { validateSchema } from '../middleware/validation.middleware';
-import { generalLimiter } from '../middleware/rateLimiter.middleware';
 import rateLimit from 'express-rate-limit';
-import { tradingSessionService } from '../services/tradingSession.service';
-import {
-  CreateSessionSchema,
-  SessionIdSchema,
-  SessionHistoryQuerySchema,
-  UpdateSessionStatusSchema,
-  type SessionConfig,
-  type SessionHistoryQuery,
-  type ActiveSessionResponse,
-  type SessionHistoryResponse,
-  type SessionValidationResponse
-} from '../schemas/session.schema';
+import { tradingSessionService, type SessionConfig } from '../services/tradingSession.service';
+import { z } from 'zod';
 
 const router = Router();
+
+// Validation schemas
+const CreateSessionSchema = z.object({
+  durationMinutes: z.number().refine(val => [60, 240, 1440, 10080].includes(val), {
+    message: 'Duration must be 60, 240, 1440, or 10080 minutes'
+  }),
+  lossLimitAmount: z.number().min(9).optional(),
+  lossLimitPercentage: z.number().min(1).max(30).optional()
+});
 
 // Apply authentication to all session routes
 router.use(authenticateToken);
@@ -29,7 +27,7 @@ router.use(authenticateToken);
 router.post(
   '/',
   rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), // 10 requests per 15 minutes
-  validateSchema(CreateSessionSchema.shape.body),
+  validateSchema(CreateSessionSchema),
   async (req: Request, res: Response) => {
     try {
       const userId = req.user?.userId;
@@ -149,7 +147,7 @@ router.post(
       const userId = req.user?.userId;
       const { sessionId } = req.params;
 
-      if (!userId) {
+      if (!userId || !sessionId) {
         return res.status(401).json({
           success: false,
           message: 'Authentication required'
@@ -197,16 +195,14 @@ router.post(
  */
 router.post(
   '/:sessionId/stop',
-  rateLimiter({ windowMs: 5 * 60 * 1000, max: 10 }), // 10 requests per 5 minutes
-  validateRequest(SessionIdSchema),
-  validateRequest(UpdateSessionStatusSchema),
+  rateLimit({ windowMs: 5 * 60 * 1000, max: 10 }), // 10 requests per 5 minutes
   async (req: Request, res: Response) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       const { sessionId } = req.params;
       const { reason = 'manual_stop' } = req.body;
 
-      if (!userId) {
+      if (!userId || !sessionId) {
         return res.status(401).json({
           success: false,
           message: 'Authentication required'
@@ -247,11 +243,10 @@ router.post(
  */
 router.get(
   '/history',
-  rateLimiter({ windowMs: 1 * 60 * 1000, max: 30 }), // 30 requests per minute
-  validateRequest(SessionHistoryQuerySchema),
+  rateLimit({ windowMs: 1 * 60 * 1000, max: 30 }), // 30 requests per minute
   async (req: Request, res: Response) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({
           success: false,
@@ -328,14 +323,13 @@ router.get(
  */
 router.get(
   '/:sessionId',
-  rateLimiter({ windowMs: 1 * 60 * 1000, max: 60 }), // 60 requests per minute
-  validateRequest(SessionIdSchema),
+  rateLimit({ windowMs: 1 * 60 * 1000, max: 60 }), // 60 requests per minute
   async (req: Request, res: Response) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       const { sessionId } = req.params;
 
-      if (!userId) {
+      if (!userId || !sessionId) {
         return res.status(401).json({
           success: false,
           message: 'Authentication required'
@@ -389,11 +383,11 @@ router.get(
  */
 router.post(
   '/validate',
-  rateLimiter({ windowMs: 1 * 60 * 1000, max: 30 }), // 30 requests per minute
-  validateRequest(CreateSessionSchema),
+  rateLimit({ windowMs: 1 * 60 * 1000, max: 30 }), // 30 requests per minute
+  validateSchema(CreateSessionSchema),
   async (req: Request, res: Response) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({
           success: false,

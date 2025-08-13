@@ -137,16 +137,16 @@ class TradingSessionService {
     });
 
     // Log session creation
-    await auditService.log({
+    await AuditService.log({
       userId,
       eventType: 'session',
       eventAction: 'session_created',
-      eventData: JSON.stringify({
+      eventData: {
         sessionId: session.id,
         durationMinutes: config.durationMinutes,
         lossLimitAmount,
         lossLimitPercentage
-      })
+      }
     });
 
     return session;
@@ -232,15 +232,15 @@ class TradingSessionService {
     });
 
     // Log session start
-    await auditService.log({
+    await AuditService.log({
       userId,
       eventType: 'session',
       eventAction: 'session_started',
-      eventData: JSON.stringify({
+      eventData: {
         sessionId,
-        startTime: now,
-        endTime
-      })
+        startTime: now.toISOString(),
+        endTime: endTime.toISOString()
+      }
     });
 
     return updatedSession;
@@ -281,17 +281,17 @@ class TradingSessionService {
     });
 
     // Log session stop
-    await auditService.log({
+    await AuditService.log({
       userId,
       eventType: 'session',
       eventAction: 'session_stopped',
-      eventData: JSON.stringify({
+      eventData: {
         sessionId,
         reason,
         actualDurationMinutes,
         finalPnL: Number(session.realizedPnl),
         performancePercentage
-      })
+      }
     });
 
     return updatedSession;
@@ -348,14 +348,14 @@ class TradingSessionService {
           }
         });
 
-        await auditService.log({
+        await AuditService.log({
           userId: session.userId,
           eventType: 'session',
           eventAction: 'session_expired',
-          eventData: JSON.stringify({
+          eventData: {
             sessionId: session.id,
             actualDurationMinutes
-          })
+          }
         });
       }
     }
