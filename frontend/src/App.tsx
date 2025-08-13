@@ -4,10 +4,12 @@ import LoginForm from './components/auth/LoginForm';
 import { FundingPage } from './pages/FundingPage';
 import PortfolioPage from './pages/PortfolioPage';
 import TradingPage from './pages/TradingPage';
+import SessionsPage from './pages/SessionsPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { useAuthStore } from './stores/authStore';
 
 type AuthView = 'login' | 'registration' | 'dashboard';
-type DashboardView = 'overview' | 'portfolio' | 'funding' | 'trading';
+type DashboardView = 'overview' | 'portfolio' | 'trading' | 'sessions' | 'funding' | 'profile';
 
 function App() {
   const [view, setView] = useState<AuthView>('login');
@@ -109,6 +111,16 @@ function App() {
                 📈 Trading
               </button>
               <button
+                onClick={() => setDashboardView('sessions')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  dashboardView === 'sessions'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                ⏱️ Sessions
+              </button>
+              <button
                 onClick={() => setDashboardView('funding')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   dashboardView === 'funding'
@@ -117,6 +129,16 @@ function App() {
                 }`}
               >
                 💰 Funding
+              </button>
+              <button
+                onClick={() => setDashboardView('profile')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  dashboardView === 'profile'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                👤 Profile
               </button>
               <button
                 onClick={() => setDashboardView('overview')}
@@ -135,7 +157,9 @@ function App() {
         {/* Dashboard Content */}
         {dashboardView === 'portfolio' && <PortfolioPage />}
         {dashboardView === 'trading' && <TradingPage />}
+        {dashboardView === 'sessions' && <SessionsPage />}
         {dashboardView === 'funding' && <FundingPage />}
+        {dashboardView === 'profile' && <ProfilePage />}
         
         {dashboardView === 'overview' && (
           <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">

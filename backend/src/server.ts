@@ -7,6 +7,10 @@ import authRoutes from '@/routes/auth.routes';
 import fundingRoutes from '@/routes/funding.routes';
 import portfolioRoutes from '@/routes/portfolio.routes';
 import tradingRoutes from '@/routes/trading.routes';
+import sessionRoutes from '@/routes/session.routes.simple';
+import { profileRoutes } from '@/routes/profile.routes';
+import onboardingRoutes from '@/routes/onboarding.routes';
+import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
 // Load environment variables
 dotenv.config();
@@ -54,9 +58,12 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/funding', fundingRoutes);
 app.use('/api/v1/portfolio', portfolioRoutes);
 app.use('/api/v1/trading', tradingRoutes);
+app.use('/api/v1/sessions', sessionRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
