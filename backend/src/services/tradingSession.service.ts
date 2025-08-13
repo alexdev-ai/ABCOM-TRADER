@@ -4,6 +4,16 @@ import algorithmQueueService from './algorithmQueue.service';
 
 const prisma = new PrismaClient();
 
+// Import background processor (will be lazy-loaded to avoid circular dependencies)
+let sessionBackgroundProcessor: any = null;
+const getBackgroundProcessor = async () => {
+  if (!sessionBackgroundProcessor) {
+    const { default: processor } = await import('./sessionBackgroundProcessor.service');
+    sessionBackgroundProcessor = processor;
+  }
+  return sessionBackgroundProcessor;
+};
+
 // Session status constants
 export const SessionStatus = {
   PENDING: 'PENDING',
