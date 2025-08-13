@@ -6,23 +6,44 @@ import PortfolioPage from './pages/PortfolioPage';
 import TradingPage from './pages/TradingPage';
 import SessionsPage from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { OnboardingPage } from './pages/OnboardingPage';
 import { useAuthStore } from './stores/authStore';
+import { onboardingApi } from './services/onboardingApi';
 
-type AuthView = 'login' | 'registration' | 'dashboard';
+type AuthView = 'login' | 'registration' | 'onboarding' | 'dashboard';
 type DashboardView = 'overview' | 'portfolio' | 'trading' | 'sessions' | 'funding' | 'profile';
 
 function App() {
   const [view, setView] = useState<AuthView>('login');
   const [dashboardView, setDashboardView] = useState<DashboardView>('portfolio');
+  const [checkingOnboarding, setCheckingOnboarding] = useState(false);
   const { isAuthenticated, user, logout, isLoading } = useAuthStore();
 
-  // Check authentication status on app load
+  // Check authentication status and onboarding status on app load
   useEffect(() => {
-    if (isAuthenticated && user) {
-      setView('dashboard');
-    } else {
-      setView('login');
-    }
+    const checkOnboardingStatus = async () => {
+      if (isAuthenticated && user) {
+        setCheckingOnboarding(true);
+        try {
+          const status = await onboardingApi.checkOnboardingStatus();
+          if (status.needsOnboarding) {
+            setView('onboarding');
+          } else {
+            setView('dashboard');
+          }
+        } catch (error) {
+          console.error('Error checking onboarding status:', error);
+          // If there's an error, proceed to dashboard
+          setView('dashboard');
+        } finally {
+          setCheckingOnboarding(false);
+        }
+      } else {
+        setView('login');
+      }
+    };
+
+    checkOnboardingStatus();
   }, [isAuthenticated, user]);
 
   const handleLoginSuccess = () => {
@@ -30,7 +51,8 @@ function App() {
   };
 
   const handleRegistrationSuccess = () => {
-    setView('dashboard');
+    // After registration, they will need onboarding
+    setView('onboarding');
   };
 
   const handleLogout = async () => {
@@ -46,8 +68,16 @@ function App() {
     setView('registration');
   };
 
-  // Show loading state while checking authentication
-  if (isLoading) {
+  const handleOnboardingComplete = () => {
+    setView('dashboard');
+  };
+
+  const handleOnboardingSkip = () => {
+    setView('dashboard');
+  };
+
+  // Show loading state while checking authentication or onboarding
+  if (isLoading || checkingOnboarding) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -226,6 +256,16 @@ function App() {
           </div>
         )}
       </div>
+    );
+  }
+
+  // Render onboarding flow
+  if (view === 'onboarding' && isAuthenticated && user) {
+    return (
+      <OnboardingPage
+        onComplete={handleOnboardingComplete}
+        onSkip={handleOnboardingSkip}
+      />
     );
   }
 
