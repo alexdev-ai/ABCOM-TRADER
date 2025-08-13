@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import algorithmQueueService from './algorithmQueue.service';
 
 const prisma = new PrismaClient();
 
