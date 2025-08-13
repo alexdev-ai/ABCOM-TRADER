@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 import { generalLimiter } from '@/middleware/rateLimiter.middleware';
+import { websocketService } from '@/services/websocket.service';
 import authRoutes from '@/routes/auth.routes';
 import fundingRoutes from '@/routes/funding.routes';
 import portfolioRoutes from './routes/portfolio.routes';
@@ -109,8 +111,14 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
   });
 });
 
+// Create HTTP server
+const server = createServer(app);
+
+// Initialize WebSocket server
+websocketService.initialize(server);
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 SmartTrade AI Backend running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔐 Auth API: http://localhost:${PORT}/api/v1/auth`);
@@ -118,7 +126,27 @@ app.listen(PORT, () => {
   console.log(`📈 Portfolio API: http://localhost:${PORT}/api/v1/portfolio`);
   console.log(`🔧 Portfolio Optimization API: http://localhost:${PORT}/api/v1/portfolio-optimization`);
   console.log(`📊 Trading API: http://localhost:${PORT}/api/v1/trading`);
+  console.log(`🌐 WebSocket API: ws://localhost:${PORT}/ws`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  websocketService.shutdown();
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  websocketService.shutdown();
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
 
 export default app;
