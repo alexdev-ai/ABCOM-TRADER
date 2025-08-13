@@ -166,3 +166,4 @@ storybook-static
 # Temporary folders
 tmp/
 temp/
+backend/prisma/dev.db-journal
