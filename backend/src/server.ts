@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { generalLimiter } from '@/middleware/rateLimiter.middleware';
 import authRoutes from '@/routes/auth.routes';
 import fundingRoutes from '@/routes/funding.routes';
-import portfolioRoutes from '@/routes/portfolio.routes';
+import portfolioRoutes from './routes/portfolio.routes';
 import tradingRoutes from '@/routes/trading.routes';
 import sessionRoutes from '@/routes/session.routes';
 import { profileRoutes } from '@/routes/profile.routes';

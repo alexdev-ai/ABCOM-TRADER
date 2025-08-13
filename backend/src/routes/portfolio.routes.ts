@@ -1,211 +1,391 @@
-import { Router, Request, Response } from 'express';
-import { authenticateToken } from '../middleware/auth.middleware';
+import express from 'express';
 import { portfolioService } from '../services/portfolio.service';
+import { authenticateToken } from '../middleware/auth.middleware';
+import { validateSchema } from '../middleware/validation.middleware';
+import { generalLimiter } from '../middleware/rateLimiter.middleware';
+import { z } from 'zod';
 
-const router = Router();
+const router = express.Router();
 
-// Apply authentication middleware to all portfolio routes
+// Apply authentication to all portfolio routes
 router.use(authenticateToken);
 
-/**
- * GET /api/v1/portfolio/positions
- * Get all portfolio positions for the authenticated user
- */
-router.get('/positions', async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
+// Apply rate limiting to portfolio routes
+router.use(generalLimiter);
 
-    const positions = await portfolioService.getUserPositions(userId);
-    
-    res.status(200).json({
-      success: true,
-      data: positions,
-      count: positions.length
-    });
-  } catch (error) {
-    console.error('Error fetching portfolio positions:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch portfolio positions'
-    });
-  }
+// Validation schemas
+const getPositionSchema = z.object({
+  symbol: z.string().min(1).max(10).regex(/^[A-Z]+$/, 'Symbol must be uppercase letters only')
+});
+
+const updatePositionSchema = z.object({
+  symbol: z.string().min(1).max(10).regex(/^[A-Z]+$/, 'Symbol must be uppercase letters only'),
+  quantity: z.number().positive('Quantity must be positive'),
+  averageCost: z.number().positive('Average cost must be positive'),
+  transactionType: z.enum(['BUY', 'SELL']),
+  price: z.number().positive('Price must be positive')
+});
+
+const getPositionsByPerformanceSchema = z.object({
+  sortBy: z.enum(['pnl', 'pnl_percent', 'market_value']).optional().default('pnl_percent'),
+  order: z.enum(['asc', 'desc']).optional().default('desc')
 });
 
 /**
  * GET /api/v1/portfolio/summary
- * Get portfolio summary with total value, P&L, etc.
+ * Get comprehensive portfolio summary
  */
-router.get('/summary', async (req: Request, res: Response) => {
+router.get('/summary', async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return res.status(401).json({ error: 'User ID not found' });
     }
 
-    const summary = await portfolioService.getPortfolioSummary(userId);
-    
-    res.status(200).json({
+    const includePositions = req.query.includePositions !== 'false';
+    const summary = await portfolioService.getPortfolioSummary(userId, includePositions);
+
+    res.json({
       success: true,
       data: summary
     });
+
   } catch (error) {
-    console.error('Error fetching portfolio summary:', error);
+    console.error('Error getting portfolio summary:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch portfolio summary'
+      error: 'Failed to retrieve portfolio summary'
     });
   }
 });
 
 /**
- * GET /api/v1/portfolio/positions/search?q=symbol
- * Search portfolio positions by symbol
+ * GET /api/v1/portfolio/positions
+ * Get all portfolio positions
  */
-router.get('/positions/search', async (req: Request, res: Response) => {
+router.get('/positions', async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const query = req.query.q as string;
-    
     if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return res.status(401).json({ error: 'User ID not found' });
     }
 
-    if (!query) {
-      return res.status(400).json({
-        success: false,
-        error: 'Search query is required'
-      });
-    }
+    const summary = await portfolioService.getPortfolioSummary(userId, true);
 
-    const positions = await portfolioService.searchPositions(userId, query);
-    
-    res.status(200).json({
+    res.json({
       success: true,
-      data: positions,
-      count: positions.length
+      data: {
+        positions: summary.positions,
+        totalValue: summary.totalValue,
+        totalPnl: summary.totalPnl,
+        totalPnlPercent: summary.totalPnlPercent,
+        numberOfPositions: summary.numberOfPositions,
+        lastUpdated: summary.lastUpdated
+      }
     });
+
   } catch (error) {
-    console.error('Error searching portfolio positions:', error);
+    console.error('Error getting portfolio positions:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to search portfolio positions'
+      error: 'Failed to retrieve portfolio positions'
     });
   }
 });
 
 /**
- * GET /api/v1/portfolio/positions/performance?type=gainers|losers&limit=5
- * Get top performing positions (gainers or losers)
+ * GET /api/v1/portfolio/positions/:symbol
+ * Get specific position details
  */
-router.get('/positions/performance', async (req: Request, res: Response) => {
+router.get('/positions/:symbol', async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const type = req.query.type as 'gainers' | 'losers';
-    const limit = parseInt(req.query.limit as string) || 5;
-    
     if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return res.status(401).json({ error: 'User ID not found' });
     }
 
-    if (!type || !['gainers', 'losers'].includes(type)) {
-      return res.status(400).json({
+    const { symbol } = req.params;
+    const position = await portfolioService.getPosition(userId, symbol);
+
+    if (!position) {
+      return res.status(404).json({
         success: false,
-        error: 'Valid type parameter required (gainers or losers)'
+        error: 'Position not found'
       });
     }
 
-    const positions = await portfolioService.getPositionsByPerformance(userId, type, limit);
-    
-    res.status(200).json({
+    res.json({
       success: true,
-      data: positions,
-      count: positions.length,
-      type
+      data: position
     });
+
   } catch (error) {
-    console.error('Error fetching positions by performance:', error);
+    console.error('Error getting position:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch positions by performance'
+      error: 'Failed to retrieve position'
     });
   }
 });
 
 /**
- * GET /api/v1/portfolio/allocation
- * Get portfolio allocation breakdown by sector
+ * PUT /api/v1/portfolio/positions
+ * Update portfolio position (after trade execution)
  */
-router.get('/allocation', async (req: Request, res: Response) => {
+router.put('/positions', validateSchema(updatePositionSchema), async (req, res) => {
   try {
     const userId = req.user?.userId;
-    
     if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      return res.status(401).json({ error: 'User ID not found' });
     }
 
-    const allocation = await portfolioService.getSectorAllocation(userId);
-    
-    res.status(200).json({
-      success: true,
-      data: allocation
-    });
-  } catch (error) {
-    console.error('Error fetching portfolio allocation:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch portfolio allocation'
-    });
-  }
-});
+    const { symbol, quantity, averageCost, transactionType, price } = req.body;
 
-/**
- * POST /api/v1/portfolio/positions
- * Update a position (called internally by trading system)
- */
-router.post('/positions', async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    const { symbol, quantity, price, type } = req.body;
-    
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    if (!symbol || !quantity || !price || !type) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: symbol, quantity, price, type'
-      });
-    }
-
-    if (!['buy', 'sell'].includes(type)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Type must be either "buy" or "sell"'
-      });
-    }
-
-    const position = await portfolioService.updatePosition(
+    const updatedPosition = await portfolioService.updatePosition({
       userId,
-      symbol.toUpperCase(),
-      parseFloat(quantity),
-      parseFloat(price),
-      type
-    );
-    
-    res.status(200).json({
-      success: true,
-      data: position,
-      message: `Position ${type} completed successfully`
+      symbol,
+      quantity,
+      averageCost,
+      transactionType,
+      price
     });
+
+    res.json({
+      success: true,
+      data: updatedPosition,
+      message: `Position ${symbol} updated successfully`
+    });
+
   } catch (error) {
     console.error('Error updating position:', error);
+    
+    if (error instanceof Error) {
+      if (error.message === 'Cannot sell more shares than owned') {
+        return res.status(400).json({
+          success: false,
+          error: 'Insufficient shares to sell'
+        });
+      }
+      
+      if (error.message === 'Position closed') {
+        return res.json({
+          success: true,
+          data: null,
+          message: 'Position closed successfully'
+        });
+      }
+    }
+
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update position'
+      error: 'Failed to update position'
+    });
+  }
+});
+
+/**
+ * POST /api/v1/portfolio/refresh
+ * Refresh portfolio prices manually
+ */
+router.post('/refresh', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    await portfolioService.updatePositionPrices(userId);
+
+    res.json({
+      success: true,
+      message: 'Portfolio prices refreshed successfully'
+    });
+
+  } catch (error) {
+    console.error('Error refreshing portfolio prices:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to refresh portfolio prices'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/performance
+ * Get positions ranked by performance
+ */
+router.get('/performance', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    const { sortBy, order } = req.query;
+    const positions = await portfolioService.getPositionsByPerformance(
+      userId,
+      sortBy as 'pnl' | 'pnl_percent' | 'market_value',
+      order as 'asc' | 'desc'
+    );
+
+    res.json({
+      success: true,
+      data: {
+        positions,
+        sortBy,
+        order
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting positions by performance:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve positions by performance'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/analytics
+ * Get portfolio analytics and recommendations
+ */
+router.get('/analytics', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    const analytics = await portfolioService.getPortfolioAnalytics(userId);
+
+    res.json({
+      success: true,
+      data: analytics
+    });
+
+  } catch (error) {
+    console.error('Error getting portfolio analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve portfolio analytics'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/price/:symbol
+ * Get current market price for a symbol
+ */
+router.get('/price/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const price = await portfolioService.getCurrentPrice(symbol);
+
+    if (!price) {
+      return res.status(404).json({
+        success: false,
+        error: 'Price data not available for symbol'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: price
+    });
+
+  } catch (error) {
+    console.error('Error getting price:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve price data'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/gainers
+ * Get top gaining positions
+ */
+router.get('/gainers', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    const positions = await portfolioService.getPositionsByPerformance(userId, 'pnl_percent', 'desc');
+    const gainers = positions.filter(p => p.unrealizedPnl > 0).slice(0, 5);
+
+    res.json({
+      success: true,
+      data: gainers
+    });
+
+  } catch (error) {
+    console.error('Error getting top gainers:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve top gainers'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/losers
+ * Get top losing positions
+ */
+router.get('/losers', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    const positions = await portfolioService.getPositionsByPerformance(userId, 'pnl_percent', 'asc');
+    const losers = positions.filter(p => p.unrealizedPnl < 0).slice(0, 5);
+
+    res.json({
+      success: true,
+      data: losers
+    });
+
+  } catch (error) {
+    console.error('Error getting top losers:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve top losers'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/sectors
+ * Get sector allocation
+ */
+router.get('/sectors', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not found' });
+    }
+
+    const summary = await portfolioService.getPortfolioSummary(userId, false);
+
+    res.json({
+      success: true,
+      data: {
+        sectorAllocation: summary.sectorAllocation,
+        totalValue: summary.totalValue,
+        numberOfPositions: summary.numberOfPositions
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting sector allocation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve sector allocation'
     });
   }
 });
