@@ -46,16 +46,25 @@ model User {
 model RiskManagement {
   id               String   @id @default(cuid())
   userId           String   @unique @map("user_id")
-  riskProfile      String @map("risk_profile")
+  riskProfile      String   @map("risk_profile")
+  riskScore        Int      @default(0) @map("risk_score") // 0-100 scale
+  riskLevel        String   @default("LOW") @map("risk_level") // LOW, MEDIUM, HIGH, CRITICAL
+  riskFactors      String   @default("{}") @map("risk_factors") // JSON string
+  riskLimits       String   @default("{}") @map("risk_limits") // JSON string
   dailyLossLimit   Decimal  @map("daily_loss_limit")
   weeklyLossLimit  Decimal  @map("weekly_loss_limit")
   monthlyLossLimit Decimal  @map("monthly_loss_limit")
+  lastAssessment   DateTime @default(now()) @map("last_assessment")
+  nextReview       DateTime @default(now()) @map("next_review")
   createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("risk_management")
+  @@index([nextReview])
+  @@index([riskLevel])
 }
 
 model AuditLog {

@@ -14,6 +14,7 @@ import marketDataRoutes from '@/routes/marketData.routes';
 import algorithmRoutes from '@/routes/algorithm.routes';
 import decisionEngineRoutes from '@/routes/decisionEngine.routes';
 import performanceMonitoringRoutes from '@/routes/performanceMonitoring.routes';
+import riskRoutes from '@/routes/risk.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
 // Load environment variables
@@ -72,6 +73,7 @@ app.use('/api/v1/market-data', marketDataRoutes);
 app.use('/api/v1/algorithm', algorithmRoutes);
 app.use('/api/v1/decision-engine', decisionEngineRoutes);
 app.use('/api/v1/performance', performanceMonitoringRoutes);
+app.use('/api/v1/risk', riskRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
