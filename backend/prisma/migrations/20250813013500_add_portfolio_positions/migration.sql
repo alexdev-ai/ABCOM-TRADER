@@ -1,44 +1,38 @@
 -- CreateTable for Portfolio Positions
 CREATE TABLE "portfolio_positions" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    "symbol" VARCHAR(10) NOT NULL,
-    "quantity" DECIMAL(15,6) NOT NULL,
-    "average_cost" DECIMAL(15,4) NOT NULL,
-    "current_price" DECIMAL(15,4),
-    "market_value" DECIMAL(15,2),
-    "unrealized_pnl" DECIMAL(15,2),
-    "unrealized_pnl_percent" DECIMAL(8,4),
-    "sector" VARCHAR(50),
-    "last_updated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "portfolio_positions_pkey" PRIMARY KEY ("id")
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "user_id" TEXT NOT NULL,
+    "symbol" TEXT NOT NULL,
+    "quantity" REAL NOT NULL,
+    "average_cost" REAL NOT NULL,
+    "current_price" REAL,
+    "market_value" REAL,
+    "unrealized_pnl" REAL,
+    "unrealized_pnl_percent" REAL,
+    "sector" TEXT,
+    "last_updated" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "portfolio_positions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable for Portfolio Summary
 CREATE TABLE "portfolio_summary" (
-    "id" SERIAL NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    "total_value" DECIMAL(15,2) NOT NULL,
-    "cash_balance" DECIMAL(15,2) NOT NULL,
-    "total_pnl" DECIMAL(15,2) NOT NULL,
-    "total_pnl_percent" DECIMAL(8,4) NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "user_id" TEXT NOT NULL UNIQUE,
+    "total_value" REAL NOT NULL,
+    "cash_balance" REAL NOT NULL,
+    "total_pnl" REAL NOT NULL,
+    "total_pnl_percent" REAL NOT NULL,
     "number_of_positions" INTEGER NOT NULL,
-    "last_updated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "portfolio_summary_pkey" PRIMARY KEY ("id")
+    "last_updated" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "portfolio_summary_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndexes for performance optimization
-CREATE INDEX "idx_portfolio_positions_user_symbol" ON "portfolio_positions"("user_id", "symbol");
-CREATE INDEX "idx_portfolio_positions_updated" ON "portfolio_positions"("last_updated");
-CREATE INDEX "idx_portfolio_positions_user_updated" ON "portfolio_positions"("user_id", "last_updated" DESC);
-CREATE UNIQUE INDEX "idx_portfolio_summary_user" ON "portfolio_summary"("user_id");
-
--- Add Foreign Key Constraints
-ALTER TABLE "portfolio_positions" ADD CONSTRAINT "portfolio_positions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "portfolio_summary" ADD CONSTRAINT "portfolio_summary_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+CREATE INDEX "portfolio_positions_user_id_symbol_idx" ON "portfolio_positions"("user_id", "symbol");
+CREATE INDEX "portfolio_positions_last_updated_idx" ON "portfolio_positions"("last_updated");
+CREATE INDEX "portfolio_positions_user_id_last_updated_idx" ON "portfolio_positions"("user_id", "last_updated");
+CREATE UNIQUE INDEX "portfolio_positions_user_id_symbol_key" ON "portfolio_positions"("user_id", "symbol");

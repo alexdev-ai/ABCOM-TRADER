@@ -29,16 +29,19 @@ model User {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   // Relations
-  riskManagement    RiskManagement?
-  auditLogs         AuditLog[]
-  refreshTokens     RefreshToken[]
-  failedAttempts    FailedLoginAttempt[]
-  transactions      Transaction[]
-  holdings          Holding[]
-  orders            Order[]
-  tradingSessions   TradingSession[]
-  portfolioPositions PortfolioPosition[]
-  portfolioSummary  PortfolioSummary?
+  riskManagement        RiskManagement?
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  failedAttempts        FailedLoginAttempt[]
+  transactions          Transaction[]
+  holdings              Holding[]
+  orders                Order[]
+  tradingSessions       TradingSession[]
+  portfolioPositions    PortfolioPosition[]
+  portfolioSummary      PortfolioSummary?
+  portfolioPerformance  PortfolioPerformance[]
+  performanceAttribution PerformanceAttribution[]
+  performanceSnapshots  PerformanceSnapshot[]
 
   @@map("users")
 }
@@ -261,4 +264,96 @@ model PortfolioSummary {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("portfolio_summary")
+}
+
+// Performance Analytics Models
+
+model PortfolioPerformance {
+  id                 Int      @id @default(autoincrement())
+  userId             String   @map("user_id")
+  date               DateTime
+  portfolioValue     Decimal  @map("portfolio_value")
+  dailyReturn        Decimal? @map("daily_return")
+  cumulativeReturn   Decimal? @map("cumulative_return")
+  benchmarkReturn    Decimal? @map("benchmark_return")
+  volatility         Decimal?
+  sharpeRatio        Decimal? @map("sharpe_ratio")
+  maxDrawdown        Decimal? @map("max_drawdown")
+  winRate            Decimal? @map("win_rate")
+  avgWin             Decimal? @map("avg_win")
+  avgLoss            Decimal? @map("avg_loss")
+  largestGain        Decimal? @map("largest_gain")
+  largestLoss        Decimal? @map("largest_loss")
+  consecutiveWins    Int      @default(0) @map("consecutive_wins")
+  consecutiveLosses  Int      @default(0) @map("consecutive_losses")
+  totalTrades        Int      @default(0) @map("total_trades")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_performance")
+  @@index([userId, date])
+  @@index([date])
+}
+
+model PerformanceAttribution {
+  id             Int      @id @default(autoincrement())
+  userId         String   @map("user_id")
+  date           DateTime
+  symbol         String
+  positionReturn Decimal? @map("position_return")
+  contribution   Decimal?
+  weight         Decimal?
+  sector         String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("performance_attribution")
+  @@index([userId, date])
+  @@index([symbol])
+}
+
+model BenchmarkData {
+  id               Int      @id @default(autoincrement())
+  symbol           String
+  name             String
+  date             DateTime
+  price            Decimal
+  dailyReturn      Decimal? @map("daily_return")
+  cumulativeReturn Decimal? @map("cumulative_return")
+  lastUpdated      DateTime @default(now()) @map("last_updated")
+
+  @@map("benchmark_data")
+  @@index([symbol, date])
+}
+
+model PerformanceSnapshot {
+  id                     Int      @id @default(autoincrement())
+  userId                 String   @map("user_id")
+  period                 String   // '1D', '1W', '1M', '3M', '6M', '1Y', 'YTD', 'ALL'
+  startDate              DateTime @map("start_date")
+  endDate                DateTime @map("end_date")
+  totalReturn            Decimal  @map("total_return")
+  totalReturnPercent     Decimal  @map("total_return_percent")
+  annualizedReturn       Decimal? @map("annualized_return")
+  volatility             Decimal?
+  sharpeRatio            Decimal? @map("sharpe_ratio")
+  sortinoRatio           Decimal? @map("sortino_ratio")
+  maxDrawdown            Decimal? @map("max_drawdown")
+  benchmarkReturn        Decimal? @map("benchmark_return")
+  benchmarkReturnPercent Decimal? @map("benchmark_return_percent")
+  alpha                  Decimal?
+  beta                   Decimal?
+  correlation            Decimal?
+  lastUpdated            DateTime @default(now()) @map("last_updated")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("performance_snapshots")
+  @@unique([userId, period, startDate, endDate])
+  @@index([userId, period])
 }
