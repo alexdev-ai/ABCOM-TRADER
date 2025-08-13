@@ -1,9 +1,11 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import marketDataService from './marketData.service';
-import portfolioService from './portfolio.service';
+import MarketDataService from './marketData.service';
+import { portfolioService } from './portfolio.service';
 import { AuditService } from './audit.service';
+import { TradingSessionService } from './tradingSession.service';
 
 const prisma = new PrismaClient();
+const marketDataService = new MarketDataService();
 
 interface StockQuote {
   symbol: string;
@@ -230,6 +232,15 @@ class TradingService {
         }
       });
 
+      // Update active trading session if exists
+      await this.updateTradingSessionAfterTrade(userId, {
+        symbol: order.symbol,
+        type: order.type,
+        quantity: order.quantity,
+        price: preview.currentPrice,
+        netAmount: preview.netAmount
+      });
+
       return {
         id: result.id,
         userId: result.userId,
@@ -440,6 +451,65 @@ class TradingService {
           updatedAt: new Date()
         }
       });
+    }
+  }
+
+  /**
+   * Update active trading session after a trade execution
+   */
+  private async updateTradingSessionAfterTrade(
+    userId: string,
+    tradeDetails: {
+      symbol: string;
+      type: 'buy' | 'sell';
+      quantity: number;
+      price: number;
+      netAmount: number;
+    }
+  ) {
+    try {
+      // Get user's active trading session
+      const activeSession = await TradingSessionService.getActiveSession(userId);
+      
+      if (!activeSession) {
+        // No active session to update
+        return;
+      }
+
+      // Calculate P&L impact of this trade
+      let pnlChange = 0;
+      
+      if (tradeDetails.type === 'sell') {
+        // For sell orders, we need to calculate realized P&L
+        // Get the user's holding to determine the cost basis
+        const holding = await prisma.holding.findFirst({
+          where: {
+            userId,
+            symbol: tradeDetails.symbol
+          }
+        });
+
+        if (holding) {
+          const averageCost = parseFloat(holding.averageCost.toString());
+          const costBasis = averageCost * tradeDetails.quantity;
+          const saleProceeds = tradeDetails.price * tradeDetails.quantity;
+          pnlChange = saleProceeds - costBasis; // Realized gain/loss
+        }
+      }
+      // For buy orders, P&L change is 0 until the position is sold
+
+      // Update the trading session with the new trade
+      await TradingSessionService.updateSessionPerformance(
+        activeSession.id,
+        pnlChange,
+        1 // One trade executed
+      );
+
+      console.log(`Updated trading session ${activeSession.id} with trade: ${tradeDetails.symbol} ${tradeDetails.type} ${tradeDetails.quantity} shares, P&L change: $${pnlChange.toFixed(2)}`);
+
+    } catch (error) {
+      // Log error but don't fail the trade
+      console.error('Failed to update trading session after trade:', error);
     }
   }
 }
