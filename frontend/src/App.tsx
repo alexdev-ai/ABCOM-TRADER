@@ -7,11 +7,12 @@ import TradingPage from './pages/TradingPage';
 import SessionsPage from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import PerformanceAnalyticsPage from './pages/PerformanceAnalyticsPage';
 import { useAuthStore } from './stores/authStore';
 import { onboardingApi } from './services/onboardingApi';
 
 type AuthView = 'login' | 'registration' | 'onboarding' | 'dashboard';
-type DashboardView = 'overview' | 'portfolio' | 'trading' | 'sessions' | 'funding' | 'profile';
+type DashboardView = 'overview' | 'portfolio' | 'trading' | 'sessions' | 'funding' | 'profile' | 'analytics';
 
 function App() {
   const [view, setView] = useState<AuthView>('login');
@@ -171,6 +172,16 @@ function App() {
                 👤 Profile
               </button>
               <button
+                onClick={() => setDashboardView('analytics')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  dashboardView === 'analytics'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                📈 Analytics
+              </button>
+              <button
                 onClick={() => setDashboardView('overview')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   dashboardView === 'overview'
@@ -190,6 +201,7 @@ function App() {
         {dashboardView === 'sessions' && <SessionsPage />}
         {dashboardView === 'funding' && <FundingPage />}
         {dashboardView === 'profile' && <ProfilePage />}
+        {dashboardView === 'analytics' && <PerformanceAnalyticsPage />}
         
         {dashboardView === 'overview' && (
           <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
