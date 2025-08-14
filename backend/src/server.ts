@@ -127,29 +127,48 @@ try {
   console.log('📡 Server will continue without WebSocket support');
 }
 
-// Test database connection on startup (non-blocking) - DISABLED FOR NOW
-// async function testDatabaseConnection() {
-//   try {
-//     const { PrismaClient } = require('@prisma/client');
-//     const prisma = new PrismaClient();
-//     await prisma.$connect();
-//     console.log('✅ Database connection successful');
-//     await prisma.$disconnect();
-//   } catch (error) {
-//     console.error('⚠️ Database connection failed:', error);
-//     console.log('🔄 Server will continue, database connection will be retried on requests');
-//   }
-// }
+// Test database connection on startup (non-blocking and safe)
+async function testDatabaseConnection() {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient({
+      log: ['error'],
+      errorFormat: 'minimal',
+    });
+    
+    // Set a timeout for the connection attempt
+    const connectionPromise = prisma.$connect();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Database connection timeout')), 10000)
+    );
+    
+    await Promise.race([connectionPromise, timeoutPromise]);
+    console.log('✅ Database connection successful');
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error('⚠️ Database connection failed:', error instanceof Error ? error.message : 'Unknown error');
+    console.log('🔄 Server will continue, database connection will be retried on requests');
+  }
+}
 
-// Test database connection asynchronously - DISABLED FOR NOW
-// testDatabaseConnection();
+// Enhanced startup diagnostics
+console.log('🚀 SmartTrade AI Backend - FULL FEATURE MODE');
+console.log('📊 System Status Check:');
+console.log('  Node.js Version:', process.version);
+console.log('  Environment:', process.env.NODE_ENV || 'development');
+console.log('  Port:', process.env.PORT || 'default');
+console.log('📊 Service Configuration:');
+console.log('  DATABASE_URL:', process.env.DATABASE_URL ? `SET (${process.env.DATABASE_URL.length} chars)` : 'MISSING');
+console.log('  REDIS_URL:', process.env.REDIS_URL ? `SET (${process.env.REDIS_URL.length} chars)` : 'MISSING');
+console.log('  ALPACA_API_KEY:', process.env.ALPACA_API_KEY ? 'SET' : 'MISSING');
+console.log('  ALPACA_BASE_URL:', process.env.ALPACA_BASE_URL || 'NOT SET');
+console.log('  JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'MISSING');
 
-console.log('🚀 SmartTrade AI Backend - Minimal Mode');
-console.log('📊 Environment Variables Check:');
-console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'MISSING');
-console.log('  REDIS_URL:', process.env.REDIS_URL ? 'SET' : 'MISSING');
-console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
-console.log('  PORT:', process.env.PORT || 'default');
+// Test database connection asynchronously
+testDatabaseConnection();
+
+// Note: Session monitor service will be initialized on first use
+console.log('📊 Session monitoring: Available on demand');
 
 // Start server
 server.listen(PORT, () => {

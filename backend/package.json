@@ -5,8 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server-minimal.js",
-    "dev": "ts-node src/server-minimal.ts",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
