@@ -368,8 +368,7 @@ export class TradingSessionService {
         _count: true,
         _avg: {
           durationMinutes: true,
-          realizedPnl: true,
-          tradeCount: true
+          realizedPnl: true
         }
       });
 
@@ -385,7 +384,7 @@ export class TradingSessionService {
         totalSessions: stats._count,
         averageDuration: stats._avg?.durationMinutes || 0,
         averagePnL: stats._avg?.realizedPnl || 0,
-        averageTradeCount: stats._avg?.tradeCount || 0,
+        averageTradeCount: 0, // TODO: Add tradeCount field to TradingSession model
         statusBreakdown: statusCounts.reduce((acc, item) => {
           acc[item.status] = item._count.status;
           return acc;
