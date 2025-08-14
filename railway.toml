@@ -1,9 +1,10 @@
 [build]
 builder = "nixpacks"
-nixpacksConfigPath = "backend"
+buildCommand = "cd backend && npm ci && npm run build"
+watchPatterns = ["backend/**"]
 
 [deploy]
-startCommand = "npm start"
+startCommand = "cd backend && npm start"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
@@ -12,7 +13,3 @@ restartPolicyMaxRetries = 3
 [env]
 NODE_ENV = "production"
 PORT = { default = "8000" }
-
-[[services]]
-[services.app]
-source = "backend"

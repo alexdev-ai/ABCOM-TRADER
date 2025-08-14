@@ -1,0 +1,15 @@
+{
+  "name": "forkcast-monorepo",
+  "version": "1.0.0",
+  "description": "SmartTrade AI - Production deployment wrapper",
+  "scripts": {
+    "build": "cd backend && npm ci && npm run build",
+    "start": "cd backend && npm start",
+    "install": "cd backend && npm ci"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "private": true
+}
