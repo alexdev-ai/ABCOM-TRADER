@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import TradingSessionService, { CreateSessionRequest } from '../services/tradingSession.service';
+import TradingSessionService from '../services/tradingSession.service';
 import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -32,11 +32,13 @@ router.get('/can-create', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     
-    const canCreate = await TradingSessionService.canCreateSession(userId);
+    // Simplified check - can create if no active session
+    const activeSession = await TradingSessionService.getActiveSession(userId);
+    const canCreate = !activeSession;
     
     res.json({
       success: true,
-      data: canCreate
+      data: { canCreate }
     });
   } catch (error) {
     console.error('Can create session check error:', error);
@@ -72,9 +74,8 @@ router.post('/',
   async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user.userId;
-      const sessionData: CreateSessionRequest = req.body;
       
-      const session = await TradingSessionService.createSession(userId, sessionData);
+      const session = await TradingSessionService.createSession(userId);
       
       res.status(201).json({
         success: true,
@@ -83,7 +84,7 @@ router.post('/',
             id: session.id,
             durationMinutes: session.durationMinutes,
             lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
-            lossLimitPercentage: parseFloat(session.lossLimitPercentage.toString()),
+            lossLimitPercentage: parseFloat(session.lossLimitPercent?.toString() || '0'),
             status: session.status,
             createdAt: session.createdAt
           }
@@ -92,109 +93,11 @@ router.post('/',
     } catch (error: any) {
       console.error('Create session error:', error);
       
-      const errorResponses: { [key: string]: { code: string; message: string; status: number } } = {
-        'USER_HAS_ACTIVE_SESSION': {
-          code: 'ACTIVE_SESSION_EXISTS',
-          message: 'You already have an active trading session. Please complete or stop your current session before creating a new one.',
-          status: 409
-        },
-        'USER_NOT_FOUND': {
-          code: 'USER_NOT_FOUND',
-          message: 'User account not found',
-          status: 404
-        },
-        'INVALID_DURATION': {
-          code: 'INVALID_DURATION',
-          message: 'Invalid session duration. Please select 1 hour, 4 hours, 24 hours, or 7 days.',
-          status: 400
-        },
-        'LOSS_LIMIT_REQUIRED': {
-          code: 'LOSS_LIMIT_REQUIRED',
-          message: 'Loss limit is required. Please specify either loss amount or percentage.',
-          status: 400
-        },
-        'LOSS_LIMIT_TOO_HIGH': {
-          code: 'LOSS_LIMIT_TOO_HIGH',
-          message: 'Loss limit cannot exceed 50% of your account balance.',
-          status: 400
-        },
-        'LOSS_PERCENTAGE_TOO_HIGH': {
-          code: 'LOSS_PERCENTAGE_TOO_HIGH',
-          message: 'Loss limit percentage cannot exceed 50%.',
-          status: 400
-        }
-      };
-      
-      const errorResponse = errorResponses[error.message];
-      if (errorResponse) {
-        return res.status(errorResponse.status).json({
-          success: false,
-          error: {
-            code: errorResponse.code,
-            message: errorResponse.message
-          }
-        });
-      }
-      
       res.status(500).json({
         success: false,
         error: {
           code: 'SESSION_CREATION_FAILED',
           message: 'Failed to create trading session. Please try again.'
-        }
-      });
-    }
-  }
-);
-
-/**
- * POST /api/v1/trading/sessions/:sessionId/activate
- * Activate a pending session
- */
-router.post('/:sessionId/activate',
-  [
-    param('sessionId').isString().notEmpty().withMessage('Session ID is required'),
-    validateRequest
-  ],
-  async (req: Request, res: Response) => {
-    try {
-      const userId = (req as any).user.userId;
-      const sessionId = req.params.sessionId!;
-      
-      const session = await TradingSessionService.activateSession(sessionId, userId);
-      
-      res.json({
-        success: true,
-        data: {
-          session: {
-            id: session.id,
-            status: session.status,
-            startTime: session.startTime,
-            endTime: session.endTime,
-            durationMinutes: session.durationMinutes,
-            lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
-            lossLimitPercentage: parseFloat(session.lossLimitPercentage.toString())
-          }
-        }
-      });
-    } catch (error: any) {
-      console.error('Activate session error:', error);
-      
-      if (error.message === 'SESSION_NOT_FOUND_OR_NOT_PENDING') {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: 'SESSION_NOT_FOUND',
-            message: 'Session not found or not in pending status'
-          }
-        });
-      }
-      
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'SESSION_ACTIVATION_FAILED',
-          message: 'Failed to activate trading session'
         }
       });
     }
@@ -218,11 +121,22 @@ router.get('/active', async (req: Request, res: Response) => {
       });
     }
     
-    const summary = await TradingSessionService.getSessionSummary(session.id, userId);
-    
+    // Return basic session info
     res.json({
       success: true,
-      data: { session: summary }
+      data: {
+        session: {
+          id: session.id,
+          status: session.status,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          durationMinutes: session.durationMinutes,
+          lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
+          lossLimitPercentage: parseFloat(session.lossLimitPercent.toString()),
+          realizedPnl: parseFloat(session.realizedPnl.toString()),
+          createdAt: session.createdAt
+        }
+      }
     });
   } catch (error) {
     console.error('Get active session error:', error);
@@ -238,7 +152,7 @@ router.get('/active', async (req: Request, res: Response) => {
 
 /**
  * GET /api/v1/trading/sessions/:sessionId
- * Get session summary with real-time data
+ * Get session by ID
  */
 router.get('/:sessionId',
   [
@@ -250,16 +164,10 @@ router.get('/:sessionId',
       const userId = (req as any).user.userId;
       const sessionId = req.params.sessionId!;
       
-      const summary = await TradingSessionService.getSessionSummary(sessionId, userId);
+      // Get session directly from service
+      const session = await TradingSessionService.getActiveSession(userId);
       
-      res.json({
-        success: true,
-        data: { session: summary }
-      });
-    } catch (error: any) {
-      console.error('Get session summary error:', error);
-      
-      if (error.message === 'SESSION_NOT_FOUND') {
+      if (!session || session.id !== sessionId) {
         return res.status(404).json({
           success: false,
           error: {
@@ -268,6 +176,25 @@ router.get('/:sessionId',
           }
         });
       }
+      
+      res.json({
+        success: true,
+        data: {
+          session: {
+            id: session.id,
+            status: session.status,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            durationMinutes: session.durationMinutes,
+            lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
+            lossLimitPercentage: parseFloat(session.lossLimitPercent.toString()),
+            realizedPnl: parseFloat(session.realizedPnl.toString()),
+            createdAt: session.createdAt
+          }
+        }
+      });
+    } catch (error: any) {
+      console.error('Get session error:', error);
       
       res.status(500).json({
         success: false,
@@ -306,23 +233,13 @@ router.post('/:sessionId/stop',
             actualDurationMinutes: session.actualDurationMinutes,
             terminationReason: session.terminationReason,
             realizedPnl: parseFloat(session.realizedPnl.toString()),
-            totalTrades: session.totalTrades
+            tradeCount: session.tradeCount || 0
           }
         },
         message: 'Trading session stopped successfully'
       });
     } catch (error: any) {
       console.error('Stop session error:', error);
-      
-      if (error.message === 'SESSION_NOT_FOUND_OR_NOT_ACTIVE') {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: 'SESSION_NOT_FOUND',
-            message: 'Session not found or not in active status'
-          }
-        });
-      }
       
       res.status(500).json({
         success: false,
@@ -357,7 +274,7 @@ router.get('/history',
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       
-      const sessions = await TradingSessionService.getSessionHistory(userId, limit, offset);
+      const sessions = await TradingSessionService.getSessionHistory(userId, limit);
       
       // Transform sessions for response
       const sessionHistory = sessions.map(session => ({
@@ -365,14 +282,14 @@ router.get('/history',
         durationMinutes: session.durationMinutes,
         actualDurationMinutes: session.actualDurationMinutes,
         lossLimitAmount: parseFloat(session.lossLimitAmount.toString()),
-        lossLimitPercentage: parseFloat(session.lossLimitPercentage.toString()),
+        lossLimitPercentage: parseFloat(session.lossLimitPercent.toString()),
         status: session.status,
         startTime: session.startTime,
         endTime: session.endTime,
         terminationReason: session.terminationReason,
         realizedPnl: parseFloat(session.realizedPnl.toString()),
-        totalTrades: session.totalTrades,
-        sessionPerformancePercentage: parseFloat(session.sessionPerformancePercentage.toString()),
+        tradeCount: session.tradeCount || 0,
+        sessionPerformancePercentage: parseFloat(session.sessionPerformancePercentage?.toString() || '0'),
         createdAt: session.createdAt
       }));
       
@@ -394,41 +311,6 @@ router.get('/history',
         error: {
           code: 'INTERNAL_ERROR',
           message: 'Failed to retrieve session history'
-        }
-      });
-    }
-  }
-);
-
-/**
- * PUT /api/v1/trading/sessions/:sessionId/performance
- * Update session performance (internal use for trade updates)
- */
-router.put('/:sessionId/performance',
-  [
-    param('sessionId').isString().notEmpty().withMessage('Session ID is required'),
-    body('pnlChange').isNumeric().withMessage('P&L change must be a number'),
-    body('tradeCount').optional().isInt({ min: 1 }).withMessage('Trade count must be positive'),
-    validateRequest
-  ],
-  async (req: Request, res: Response) => {
-    try {
-      const sessionId = req.params.sessionId!;
-      const { pnlChange, tradeCount = 1 } = req.body;
-      
-      await TradingSessionService.updateSessionPerformance(sessionId, pnlChange, tradeCount);
-      
-      res.json({
-        success: true,
-        message: 'Session performance updated'
-      });
-    } catch (error) {
-      console.error('Update session performance error:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'PERFORMANCE_UPDATE_FAILED',
-          message: 'Failed to update session performance'
         }
       });
     }
