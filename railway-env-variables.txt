@@ -1,0 +1,47 @@
+# Railway Production Environment Variables for forkcast-api
+# Copy and paste these into Railway's environment variables section
+
+# Basic Configuration
+NODE_ENV=production
+PORT=8000
+
+# JWT Security (Generated)
+JWT_SECRET=38ee2fcf5ff1bd0ae2a6e4ceee854144aa8bbe81324b9cdadc15a89c08985fd5
+JWT_EXPIRES_IN=24h
+JWT_REFRESH_EXPIRES_IN=7d
+
+# CORS and Frontend
+FRONTEND_URL=https://forkcast.net
+CORS_ORIGINS=https://forkcast.net,https://www.forkcast.net
+
+# Alpaca Trading API (Paper Trading - SAFE FOR INITIAL DEPLOYMENT)
+ALPACA_API_KEY=PKKKBYLMQC2N95BTGDLA
+ALPACA_SECRET_KEY=F9ewT1QSw92BK0FaycvRUa4D3300b5Ue6zSvzlCf
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
+ALPACA_DATA_URL=https://data.alpaca.markets
+
+# Rate Limiting
+RATE_LIMIT_WINDOW=900000
+RATE_LIMIT_MAX=100
+TRADING_RATE_LIMIT_MAX=10
+
+# Security
+HELMET_CSP_ENABLED=true
+SESSION_COOKIE_SECURE=true
+
+# Audit Trail (Generated)
+AUDIT_SECRET_KEY=ab224595f20d10db4e8b45c150aedbb18312de1013c5e4319f26941ebf82fa45
+
+# Logging
+LOG_LEVEL=info
+
+# WebSocket Configuration
+WS_HEARTBEAT_INTERVAL=30000
+WS_MAX_CONNECTIONS_PER_USER=3
+
+# Background Jobs
+JOB_CONCURRENCY=5
+JOB_ATTEMPTS=3
+
+# NOTE: DATABASE_URL and REDIS_URL are automatically provided by Railway
+# when you have PostgreSQL and Redis services in your project
