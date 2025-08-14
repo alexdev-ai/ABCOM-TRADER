@@ -5,6 +5,9 @@ import { z } from 'zod';
 import { Eye, EyeOff, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
+// API Base URL - consistent with other API files
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+
 // Registration form validation schema based on Context7 research
 const registrationSchema = z.object({
   email: z.string().email('Valid email required'),
@@ -82,7 +85,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       clearError();
       
       // Register using the auth store
-      const response = await fetch('http://localhost:3003/api/v1/auth/register', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
