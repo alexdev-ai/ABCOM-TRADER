@@ -127,22 +127,29 @@ try {
   console.log('📡 Server will continue without WebSocket support');
 }
 
-// Test database connection on startup (non-blocking)
-async function testDatabaseConnection() {
-  try {
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
-    await prisma.$connect();
-    console.log('✅ Database connection successful');
-    await prisma.$disconnect();
-  } catch (error) {
-    console.error('⚠️ Database connection failed:', error);
-    console.log('🔄 Server will continue, database connection will be retried on requests');
-  }
-}
+// Test database connection on startup (non-blocking) - DISABLED FOR NOW
+// async function testDatabaseConnection() {
+//   try {
+//     const { PrismaClient } = require('@prisma/client');
+//     const prisma = new PrismaClient();
+//     await prisma.$connect();
+//     console.log('✅ Database connection successful');
+//     await prisma.$disconnect();
+//   } catch (error) {
+//     console.error('⚠️ Database connection failed:', error);
+//     console.log('🔄 Server will continue, database connection will be retried on requests');
+//   }
+// }
 
-// Test database connection asynchronously
-testDatabaseConnection();
+// Test database connection asynchronously - DISABLED FOR NOW
+// testDatabaseConnection();
+
+console.log('🚀 SmartTrade AI Backend - Minimal Mode');
+console.log('📊 Environment Variables Check:');
+console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'MISSING');
+console.log('  REDIS_URL:', process.env.REDIS_URL ? 'SET' : 'MISSING');
+console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
+console.log('  PORT:', process.env.PORT || 'default');
 
 // Start server
 server.listen(PORT, () => {
