@@ -13,8 +13,9 @@ import sessionRoutes from './routes/session.routes';
 import { profileRoutes } from './routes/profile.routes';
 import onboardingRoutes from './routes/onboarding.routes';
 import marketDataRoutes from './routes/marketData.routes';
-import algorithmRoutes from './routes/algorithm.routes';
-import decisionEngineRoutes from './routes/decisionEngine.routes';
+// Algorithm routes temporarily disabled for stability
+// import algorithmRoutes from './routes/algorithm.routes';
+// import decisionEngineRoutes from './routes/decisionEngine.routes';
 import performanceMonitoringRoutes from './routes/performanceMonitoring.routes';
 import performanceAnalyticsRoutes from './routes/performanceAnalytics.routes';
 import tradeHistoryRoutes from './routes/tradeHistory.routes';
@@ -81,8 +82,9 @@ app.use('/api/v1/trading', tradingRoutes);
 app.use('/api/v1/sessions', sessionRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/market-data', marketDataRoutes);
-app.use('/api/v1/algorithm', algorithmRoutes);
-app.use('/api/v1/decision-engine', decisionEngineRoutes);
+// Algorithm routes temporarily disabled for stability
+// app.use('/api/v1/algorithm', algorithmRoutes);
+// app.use('/api/v1/decision-engine', decisionEngineRoutes);
 app.use('/api/v1/performance', performanceMonitoringRoutes);
 app.use('/api/v1/performance-analytics', performanceAnalyticsRoutes);
 app.use('/api/v1/trade-history', tradeHistoryRoutes);
