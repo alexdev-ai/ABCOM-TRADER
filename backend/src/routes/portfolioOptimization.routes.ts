@@ -52,7 +52,7 @@ router.get('/analysis', async (req: Request, res: Response) => {
     res.json(analysis);
   } catch (error) {
     console.error('Portfolio analysis error:', error);
-    res.status(500).json({ error: 'Failed to generate portfolio analysis' });
+    return res.status(500).json({ error: 'Failed to generate portfolio analysis' });
   }
 });
 
@@ -76,7 +76,7 @@ router.get('/targets', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get targets error:', error);
-    res.status(500).json({ error: 'Failed to retrieve target allocations' });
+    return res.status(500).json({ error: 'Failed to retrieve target allocations' });
   }
 });
 
@@ -114,7 +114,7 @@ router.post('/targets', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Set targets error:', error);
-    res.status(500).json({ error: 'Failed to set target allocations' });
+    return res.status(500).json({ error: 'Failed to set target allocations' });
   }
 });
 
