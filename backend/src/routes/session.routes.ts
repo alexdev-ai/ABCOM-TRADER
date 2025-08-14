@@ -59,7 +59,7 @@ router.post('/', validateSchema(createSessionSchema.shape.body), async (req, res
           id: session.id,
           durationMinutes: session.durationMinutes,
           lossLimitAmount: session.lossLimitAmount.toNumber(),
-          lossLimitPercentage: session.lossLimitPercentage?.toNumber(),
+          lossLimitPercent: session.lossLimitPercent?.toNumber(),
           status: session.status,
           endTime: session.endTime,
           createdAt: session.createdAt
@@ -234,12 +234,12 @@ router.get('/active', async (req, res) => {
           id: session.id,
           durationMinutes: session.durationMinutes,
           lossLimitAmount: session.lossLimitAmount.toNumber(),
-          lossLimitPercentage: session.lossLimitPercentage?.toNumber(),
+          lossLimitPercent: session.lossLimitPercent?.toNumber(),
           status: session.status,
           startTime: session.startTime,
           endTime: session.endTime,
           realizedPnl: session.realizedPnl?.toNumber() || 0,
-          totalTrades: session.totalTrades || 0,
+          totalTrades: 0, // TODO: Add totalTrades field to TradingSession model
           terminationReason: session.terminationReason,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt
@@ -306,12 +306,12 @@ router.get('/history', async (req, res) => {
       id: session.id,
       durationMinutes: session.durationMinutes,
       lossLimitAmount: session.lossLimitAmount.toNumber(),
-      lossLimitPercentage: session.lossLimitPercentage?.toNumber(),
+      lossLimitPercent: session.lossLimitPercent?.toNumber(),
       status: session.status,
       startTime: session.startTime,
       endTime: session.endTime,
       realizedPnl: session.realizedPnl?.toNumber() || 0,
-      totalTrades: session.totalTrades || 0,
+      totalTrades: 0, // TODO: Add totalTrades field to TradingSession model
       terminationReason: session.terminationReason,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
@@ -389,12 +389,12 @@ router.get('/:sessionId', async (req, res) => {
           id: session.id,
           durationMinutes: session.durationMinutes,
           lossLimitAmount: session.lossLimitAmount.toNumber(),
-          lossLimitPercentage: session.lossLimitPercentage?.toNumber(),
+          lossLimitPercent: session.lossLimitPercent?.toNumber(),
           status: session.status,
           startTime: session.startTime,
           endTime: session.endTime,
           realizedPnl: session.realizedPnl?.toNumber() || 0,
-          totalTrades: session.totalTrades || 0,
+          totalTrades: 0, // TODO: Add totalTrades field to TradingSession model
           terminationReason: session.terminationReason,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt
