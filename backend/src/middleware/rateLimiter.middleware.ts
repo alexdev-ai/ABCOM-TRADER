@@ -1,6 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
-import { AuditService } from '@/services/audit.service';
+import { AuditService } from '../services/audit.service';
 
 // Helper function to get client IP
 const getClientIP = (req: Request): string => {

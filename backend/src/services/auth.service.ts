@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { PrismaClient, User } from '@prisma/client';
 import { Decimal } from 'decimal.js';
-import { RegistrationData } from '@/schemas/auth.schema';
+import { RegistrationData } from '../schemas/auth.schema';
 
 const prisma = new PrismaClient();
 

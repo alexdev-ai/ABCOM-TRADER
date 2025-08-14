@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { AuthService } from '@/services/auth.service';
-import { AuditService } from '@/services/audit.service';
-import { validateSchema, sanitizeInput } from '@/middleware/validation.middleware';
-import { registrationLimiter, loginLimiter } from '@/middleware/rateLimiter.middleware';
-import { registrationSchema, loginSchema, RegistrationData, LoginData } from '@/schemas/auth.schema';
+import { AuthService } from '../services/auth.service';
+import { AuditService } from '../services/audit.service';
+import { validateSchema, sanitizeInput } from '../middleware/validation.middleware';
+import { registrationLimiter, loginLimiter } from '../middleware/rateLimiter.middleware';
+import { registrationSchema, loginSchema, RegistrationData, LoginData } from '../schemas/auth.schema';
 
 const router = Router();
 
