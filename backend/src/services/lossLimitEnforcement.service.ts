@@ -847,7 +847,7 @@ class LossLimitEnforcementService {
       userId: limit.userId,
       eventType: 'loss_limit',
       eventAction: 'LIMIT_CREATED',
-      eventData: JSON.stringify(limit)
+      eventData: limit
     });
   }
 
@@ -856,7 +856,7 @@ class LossLimitEnforcementService {
       userId: limit.userId,
       eventType: 'loss_limit',
       eventAction: 'LIMIT_UPDATED',
-      eventData: JSON.stringify(limit)
+      eventData: limit
     });
   }
 
@@ -895,7 +895,7 @@ class LossLimitEnforcementService {
       userId: breaker.userId,
       eventType: 'circuit_breaker',
       eventAction: 'BREAKER_CREATED',
-      eventData: JSON.stringify(breaker)
+      eventData: breaker
     });
   }
 
@@ -904,7 +904,7 @@ class LossLimitEnforcementService {
       userId: breaker.userId,
       eventType: 'circuit_breaker',
       eventAction: 'BREAKER_UPDATED',
-      eventData: JSON.stringify(breaker)
+      eventData: breaker
     });
   }
 
@@ -941,7 +941,7 @@ class LossLimitEnforcementService {
       userId: halt.userId,
       eventType: 'trading_halt',
       eventAction: 'HALT_CREATED',
-      eventData: JSON.stringify(halt)
+      eventData: halt
     });
   }
 
@@ -950,7 +950,7 @@ class LossLimitEnforcementService {
       userId: halt.userId,
       eventType: 'trading_halt',
       eventAction: 'HALT_UPDATED',
-      eventData: JSON.stringify(halt)
+      eventData: halt
     });
   }
 
