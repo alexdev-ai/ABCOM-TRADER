@@ -13,7 +13,8 @@ const redisConfig = {
   retryDelayOnFailover: 100,
   maxRetriesPerRequest: 3,
   connectTimeout: 10000,
-  commandTimeout: 5000
+  commandTimeout: 5000,
+  family: 0
 };
 
 // Create Redis connection

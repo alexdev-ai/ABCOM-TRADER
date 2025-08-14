@@ -131,7 +131,7 @@ class PerformanceMonitoringService {
   private readonly DRAWDOWN_ALERT = 0.20; // 20%
 
   constructor() {
-    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.redis = new Redis(process.env.REDIS_URL + '?family=0' || 'redis://localhost:6379?family=0');
     this.prisma = new PrismaClient();
 
     // Initialize Bull Queue for performance monitoring

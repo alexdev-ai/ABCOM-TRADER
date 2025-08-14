@@ -76,7 +76,7 @@ class DecisionEngineService {
   private orders: Map<string, TradeOrder> = new Map(); // key: orderId
 
   constructor() {
-    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.redis = new Redis(process.env.REDIS_URL + '?family=0' || 'redis://localhost:6379?family=0');
     this.prisma = new PrismaClient();
     this.marketDataService = new MarketDataService();
     

@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 let redis: Redis | null = null;
 if (process.env.REDIS_URL) {
   try {
-    redis = new Redis(process.env.REDIS_URL);
+    redis = new Redis(process.env.REDIS_URL + '?family=0');
     redis.on('error', (err) => {
       console.warn('Redis connection warning:', err.message);
     });

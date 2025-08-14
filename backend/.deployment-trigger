@@ -1,2 +1,11 @@
-# Updated Thu Aug 14 10:39:57 MST 2025
-Deployment trigger: Thu Aug 14 15:09:59 MST 2025
+# Railway Deployment Trigger
+# This file is updated to trigger new deployments when changes are made
+
+DEPLOYMENT_ID: redis-ipv6-fix-20250814-160309
+DESCRIPTION: Fixed Redis IPv6/IPv4 dual stack lookup for Railway internal networking
+CHANGES: 
+  - Added family=0 to all Redis connections for IPv6 compatibility
+  - Fixed ENOTFOUND redis.railway.internal errors
+  - Updated 7 services: decisionEngine, algorithm, algorithmQueue, performanceMonitoring, marketData, sessionBackgroundProcessor, health routes
+EXPECTED_RESULT: All Redis connection errors should be resolved
+TIMESTAMP: 2025-08-14T16:03:09-07:00

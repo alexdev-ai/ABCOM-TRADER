@@ -11,8 +11,8 @@ JWT_EXPIRES_IN=24h
 JWT_REFRESH_EXPIRES_IN=7d
 
 # CORS and Frontend
-FRONTEND_URL=https://forkcast.net
-CORS_ORIGINS=https://forkcast.net,https://www.forkcast.net
+FRONTEND_URL=https://abcom-trader.vercel.app
+CORS_ORIGINS=https://abcom-trader.vercel.app
 
 # Alpaca Trading API (Paper Trading - SAFE FOR INITIAL DEPLOYMENT)
 ALPACA_API_KEY=PKKKBYLMQC2N95BTGDLA
