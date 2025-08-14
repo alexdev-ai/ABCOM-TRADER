@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// API Base URL
-const API_BASE_URL = 'http://localhost:3003/api/v1';
+// API Base URL - consistent with tradingApi.ts
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
 
 // Types
 interface User {
@@ -70,7 +70,7 @@ const apiClient = {
     // If token expired, try to refresh
     if (response.status === 401 && token) {
       try {
-        const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
         });
@@ -118,7 +118,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const response = await apiClient.request('/auth/login', {
+          const response = await apiClient.request('/api/v1/auth/login', {
             method: 'POST',
             body: JSON.stringify({ email, password, rememberMe }),
           });
@@ -157,7 +157,7 @@ export const useAuthStore = create<AuthState>()(
         
         try {
           // Call logout endpoint to revoke refresh token
-          await apiClient.request('/auth/logout', {
+          await apiClient.request('/api/v1/auth/logout', {
             method: 'POST',
           });
         } catch (error) {
@@ -179,7 +179,7 @@ export const useAuthStore = create<AuthState>()(
 
       refreshToken: async () => {
         try {
-          const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
             method: 'POST',
             credentials: 'include',
           });
@@ -223,7 +223,7 @@ export const useAuthStore = create<AuthState>()(
 
         // Fetch current user data
         try {
-          const response = await apiClient.request('/auth/me');
+          const response = await apiClient.request('/api/v1/auth/me');
           
           if (!response.ok) {
             throw new Error('Failed to fetch user data');
