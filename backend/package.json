@@ -4,13 +4,13 @@
   "description": "SmartTrade AI Backend API",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/server-minimal.js",
+    "dev": "ts-node src/server-minimal.ts",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix"
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^3.1.3",
