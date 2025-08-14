@@ -5,10 +5,18 @@ import Redis from 'ioredis';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Initialize Redis client for health check
+// Initialize Redis client for health check (with error handling)
 let redis: Redis | null = null;
 if (process.env.REDIS_URL) {
-  redis = new Redis(process.env.REDIS_URL);
+  try {
+    redis = new Redis(process.env.REDIS_URL);
+    redis.on('error', (err) => {
+      console.warn('Redis connection warning:', err.message);
+    });
+  } catch (error) {
+    console.warn('Redis initialization failed:', error);
+    redis = null;
+  }
 }
 
 // Basic health check - no database required

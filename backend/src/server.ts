@@ -127,6 +127,23 @@ try {
   console.log('📡 Server will continue without WebSocket support');
 }
 
+// Test database connection on startup (non-blocking)
+async function testDatabaseConnection() {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+    await prisma.$connect();
+    console.log('✅ Database connection successful');
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error('⚠️ Database connection failed:', error);
+    console.log('🔄 Server will continue, database connection will be retried on requests');
+  }
+}
+
+// Test database connection asynchronously
+testDatabaseConnection();
+
 // Start server
 server.listen(PORT, () => {
   console.log(`🚀 SmartTrade AI Backend running on port ${PORT}`);
