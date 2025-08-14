@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002/api/v1';
+const API_BASE = 'http://localhost:3003/api/v1';
 
 export interface PortfolioPosition {
   id: number;

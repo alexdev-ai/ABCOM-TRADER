@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { tradingApi, type AvailableStock, type TradeOrder, type TradePreview, type StockQuote } from '../services/tradingApi';
-import { sessionApi, type ActiveSession } from '../services/sessionApi';
-import { ActiveSessionDashboard } from '../components/session/ActiveSessionDashboard';
+import tradingSessionApi, { type SessionSummary } from '../services/tradingSessionApi';
+import ActiveSessionDashboard from '../components/session/ActiveSessionDashboard';
 
 interface StockSearchProps {
   onSelectStock: (stock: AvailableStock) => void;
@@ -344,7 +344,7 @@ const TradingPage: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // Session state
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [activeSession, setActiveSession] = useState<SessionSummary | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
@@ -354,7 +354,7 @@ const TradingPage: React.FC = () => {
       try {
         setSessionLoading(true);
         setSessionError(null);
-        const session = await sessionApi.getActiveSession();
+        const session = await tradingSessionApi.getActiveSession();
         setActiveSession(session);
       } catch (error) {
         console.error('Failed to load active session:', error);
@@ -371,12 +371,29 @@ const TradingPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Refresh session data
+  const refreshSession = async () => {
+    if (activeSession) {
+      try {
+        const session = await tradingSessionApi.getSessionSummary(activeSession.id);
+        setActiveSession(session);
+      } catch (error) {
+        console.error('Failed to refresh session:', error);
+      }
+    }
+  };
+
+  // Handle session stopped
+  const handleSessionStopped = () => {
+    setActiveSession(null);
+  };
+
   // Check session limits and warnings
-  const checkSessionLimits = (session: ActiveSession) => {
-    const timeWarning = session.progressPercentages.timeElapsed >= 80;
-    const lossWarning = session.progressPercentages.lossLimitUsed >= 80;
-    const timeCritical = session.progressPercentages.timeElapsed >= 95;
-    const lossCritical = session.progressPercentages.lossLimitUsed >= 95;
+  const checkSessionLimits = (session: SessionSummary) => {
+    const timeWarning = session.progress.timeElapsed >= 80;
+    const lossWarning = session.progress.lossLimitUsed >= 80;
+    const timeCritical = session.progress.timeElapsed >= 95;
+    const lossCritical = session.progress.lossLimitUsed >= 95;
 
     if (timeCritical || lossCritical) {
       return { 
@@ -485,7 +502,11 @@ const TradingPage: React.FC = () => {
         </div>
       ) : (
         <div className="mb-6">
-          <ActiveSessionDashboard />
+          <ActiveSessionDashboard 
+            session={activeSession}
+            onSessionStopped={handleSessionStopped}
+            onRefresh={refreshSession}
+          />
           
           {/* Session Limit Warnings */}
           {sessionWarning && (

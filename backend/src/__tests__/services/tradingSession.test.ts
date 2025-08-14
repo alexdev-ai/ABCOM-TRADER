@@ -1,233 +1,200 @@
-import { TradingSessionService } from '../../services/tradingSession.service';
-import { PrismaClient } from '@prisma/client';
-import { Decimal } from 'decimal.js';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { TradingSessionService, SessionStatus, SessionCreationData, SessionUpdateData } from '../../services/tradingSession.service';
 
-// Create a properly typed mock
-const mockPrisma = new PrismaClient() as jest.Mocked<PrismaClient>;
+// Mock Prisma client
+const mockPrisma = {
+  user: {
+    findUnique: jest.fn() as jest.MockedFunction<any>,
+    findFirst: jest.fn() as jest.MockedFunction<any>,
+    update: jest.fn() as jest.MockedFunction<any>,
+  },
+  tradingSession: {
+    findFirst: jest.fn() as jest.MockedFunction<any>,
+    findUnique: jest.fn() as jest.MockedFunction<any>,
+    findMany: jest.fn() as jest.MockedFunction<any>,
+    create: jest.fn() as jest.MockedFunction<any>,
+    update: jest.fn() as jest.MockedFunction<any>,
+    aggregate: jest.fn() as jest.MockedFunction<any>,
+    groupBy: jest.fn() as jest.MockedFunction<any>,
+  },
+  $transaction: jest.fn() as jest.MockedFunction<any>,
+};
+
+jest.mock('@prisma/client', () => ({
+  PrismaClient: jest.fn().mockImplementation(() => mockPrisma),
+}));
+
+// Mock the background processor
+jest.mock('../../services/sessionBackgroundProcessor.service', () => ({
+  default: {
+    scheduleSessionExpiration: jest.fn(),
+    startSessionMonitoring: jest.fn(),
+  }
+}));
+
+// Mock the session monitoring service
+jest.mock('../../services/sessionMonitoring.service', () => ({
+  default: {
+    startSessionMonitoring: jest.fn(),
+  }
+}));
 
 describe('TradingSessionService', () => {
+  let tradingSessionService: TradingSessionService;
+
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  describe('canCreateSession', () => {
-    it('should allow session creation for eligible user', async () => {
-      // Mock user with sufficient balance and no active session
-      (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
-        accountBalance: new Decimal(100),
-        isActive: true
-      });
-
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
-
-      const result = await TradingSessionService.canCreateSession('user-1');
-
-      expect(result.canCreate).toBe(true);
-      expect(result.reason).toBeUndefined();
-    });
-
-    it('should prevent session creation for user with active session', async () => {
-      // Mock user with active session
-      (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
-        accountBalance: new Decimal(100),
-        isActive: true
-      });
-
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue({
-        id: 'active-session',
-        status: 'active'
-      });
-
-      const result = await TradingSessionService.canCreateSession('user-1');
-
-      expect(result.canCreate).toBe(false);
-      expect(result.reason).toBe('User already has an active session');
-    });
-
-    it('should prevent session creation for inactive user', async () => {
-      // Mock inactive user
-      (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
-        accountBalance: new Decimal(100),
-        isActive: false
-      });
-
-      const result = await TradingSessionService.canCreateSession('user-1');
-
-      expect(result.canCreate).toBe(false);
-      expect(result.reason).toBe('User account is inactive');
-    });
-
-    it('should prevent session creation for user with insufficient balance', async () => {
-      // Mock user with low balance
-      (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
-        accountBalance: new Decimal(50), // Below $90 minimum
-        isActive: true
-      });
-
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
-
-      const result = await TradingSessionService.canCreateSession('user-1');
-
-      expect(result.canCreate).toBe(false);
-      expect(result.reason).toBe('Insufficient account balance (minimum $90 required)');
-    });
+    tradingSessionService = TradingSessionService.getInstance();
   });
 
   describe('createSession', () => {
-    beforeEach(() => {
-      // Mock user for validation
-      (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
-        accountBalance: new Decimal(100),
-        riskTolerance: 'MEDIUM'
-      });
+    const sessionData: SessionCreationData = {
+      userId: 'user-1',
+      durationMinutes: 240,
+      lossLimitAmount: 100
+    };
 
-      // Mock no active session
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
-    });
+    const mockUser = {
+      id: 'user-1',
+      email: 'test@example.com',
+      accountBalance: { toNumber: () => 1000 },
+      tradingSessions: []
+    };
 
-    it('should create a new session with valid parameters', async () => {
-      const sessionData = {
-        durationMinutes: 60,
-        lossLimitAmount: 9
+    it('should successfully create a new trading session', async () => {
+      // Mock user lookup with no active sessions
+      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+
+      // Mock session creation
+      const mockSession = {
+        id: 'session-1',
+        userId: 'user-1',
+        durationMinutes: 240,
+        lossLimitAmount: { toNumber: () => 100 },
+        status: SessionStatus.PENDING,
+        endTime: new Date()
       };
 
-      const mockCreatedSession = {
-        id: 'test-session-id',
-        userId: 'user-1',
-        durationMinutes: 60,
-        lossLimitAmount: new Decimal(9),
-        lossLimitPercentage: new Decimal(9),
-        status: 'pending',
-        startTime: null,
-        endTime: null,
-        actualDurationMinutes: null,
-        totalTrades: 0,
-        realizedPnl: new Decimal(0),
-        sessionPerformancePercentage: new Decimal(0),
-        terminationReason: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+      mockPrisma.$transaction.mockImplementation((callback: any) => callback(mockPrisma));
+      mockPrisma.tradingSession.create.mockResolvedValue(mockSession);
 
-      (mockPrisma.tradingSession.create as jest.Mock).mockResolvedValue(mockCreatedSession);
+      const result = await tradingSessionService.createSession(sessionData);
 
-      const session = await TradingSessionService.createSession('user-1', sessionData);
-
-      expect(session).toMatchObject({
-        id: 'test-session-id',
-        userId: 'user-1',
-        durationMinutes: 60,
-        status: 'pending'
-      });
-
-      expect(mockPrisma.tradingSession.create).toHaveBeenCalledWith({
-        data: {
-          userId: 'user-1',
-          durationMinutes: 60,
-          lossLimitAmount: new Decimal(9),
-          lossLimitPercentage: new Decimal(9),
-          status: 'pending'
+      expect(result).toEqual(mockSession);
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        include: { 
+          tradingSessions: { 
+            where: { 
+              status: { in: ['PENDING', 'ACTIVE'] } 
+            } 
+          } 
         }
       });
     });
 
-    it('should throw error for invalid duration', async () => {
-      const sessionData = {
-        durationMinutes: 30, // Invalid duration
-        lossLimitAmount: 9
-      };
+    it('should throw error when user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(
-        TradingSessionService.createSession('user-1', sessionData)
-      ).rejects.toThrow('INVALID_DURATION');
+      await expect(tradingSessionService.createSession(sessionData)).rejects.toThrow('USER_NOT_FOUND');
     });
 
-    it('should throw error when user has active session', async () => {
-      // Mock active session exists
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue({
-        id: 'active-session',
-        status: 'active'
-      });
-
-      const sessionData = {
-        durationMinutes: 60,
-        lossLimitAmount: 9
+    it('should throw error when active session exists', async () => {
+      const userWithActiveSession = {
+        ...mockUser,
+        tradingSessions: [{ id: 'active-session', status: 'ACTIVE' }]
       };
+      
+      mockPrisma.user.findUnique.mockResolvedValue(userWithActiveSession);
 
-      await expect(
-        TradingSessionService.createSession('user-1', sessionData)
-      ).rejects.toThrow('USER_HAS_ACTIVE_SESSION');
+      await expect(tradingSessionService.createSession(sessionData)).rejects.toThrow('ACTIVE_SESSION_EXISTS');
+    });
+
+    it('should throw error for invalid duration', async () => {
+      const invalidSessionData = { ...sessionData, durationMinutes: 30 };
+      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+
+      await expect(tradingSessionService.createSession(invalidSessionData)).rejects.toThrow('INVALID_DURATION');
+    });
+
+    it('should throw error when loss limit too high', async () => {
+      const highLossLimitData = { ...sessionData, lossLimitAmount: 500 }; // 50% of 1000 balance
+      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+
+      await expect(tradingSessionService.createSession(highLossLimitData)).rejects.toThrow('LOSS_LIMIT_TOO_HIGH');
     });
   });
 
-  describe('activateSession', () => {
-    it('should activate a pending session', async () => {
-      const mockPendingSession = {
+  describe('startSession', () => {
+    it('should successfully start a pending session', async () => {
+      const mockSession = {
         id: 'session-1',
         userId: 'user-1',
-        status: 'pending',
-        durationMinutes: 60
+        status: SessionStatus.PENDING,
+        endTime: new Date()
       };
 
-      const mockActivatedSession = {
-        ...mockPendingSession,
-        status: 'active',
-        startTime: new Date(),
-        endTime: new Date(Date.now() + 60 * 60 * 1000)
+      const mockUpdatedSession = {
+        ...mockSession,
+        status: SessionStatus.ACTIVE,
+        startTime: new Date()
       };
 
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(mockPendingSession);
-      (mockPrisma.tradingSession.update as jest.Mock).mockResolvedValue(mockActivatedSession);
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(mockSession);
+      mockPrisma.$transaction.mockImplementation((callback: any) => callback(mockPrisma));
+      mockPrisma.tradingSession.update.mockResolvedValue(mockUpdatedSession);
 
-      const session = await TradingSessionService.activateSession('session-1', 'user-1');
+      const result = await tradingSessionService.startSession('session-1', 'user-1');
 
-      expect(session.status).toBe('active');
-      expect(session.startTime).toBeDefined();
-      expect(session.endTime).toBeDefined();
+      expect(result.status).toBe(SessionStatus.ACTIVE);
+      expect(mockPrisma.tradingSession.update).toHaveBeenCalledWith({
+        where: { id: 'session-1' },
+        data: {
+          status: SessionStatus.ACTIVE,
+          startTime: expect.any(Date)
+        }
+      });
     });
 
-    it('should throw error if session not found or not pending', async () => {
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
+    it('should throw error when session not found', async () => {
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(null);
 
       await expect(
-        TradingSessionService.activateSession('session-1', 'user-1')
-      ).rejects.toThrow('SESSION_NOT_FOUND_OR_NOT_PENDING');
+        tradingSessionService.startSession('session-1', 'user-1')
+      ).rejects.toThrow('SESSION_NOT_FOUND');
     });
   });
 
   describe('stopSession', () => {
-    it('should stop an active session', async () => {
-      const mockActiveSession = {
+    it('should successfully stop an active session', async () => {
+      const mockSession = {
         id: 'session-1',
         userId: 'user-1',
-        status: 'active',
-        startTime: new Date(Date.now() - 30 * 60 * 1000) // 30 minutes ago
+        status: SessionStatus.ACTIVE
       };
 
       const mockStoppedSession = {
-        ...mockActiveSession,
-        status: 'stopped',
-        endTime: new Date(),
-        actualDurationMinutes: 30,
+        ...mockSession,
+        status: SessionStatus.STOPPED,
         terminationReason: 'manual_stop'
       };
 
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(mockActiveSession);
-      (mockPrisma.tradingSession.update as jest.Mock).mockResolvedValue(mockStoppedSession);
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(mockSession);
+      mockPrisma.$transaction.mockImplementation((callback: any) => callback(mockPrisma));
+      mockPrisma.tradingSession.update.mockResolvedValue(mockStoppedSession);
 
-      const session = await TradingSessionService.stopSession('session-1', 'user-1');
+      const result = await tradingSessionService.stopSession('session-1', 'user-1');
 
-      expect(session.status).toBe('stopped');
-      expect(session.terminationReason).toBe('manual_stop');
-      expect(session.endTime).toBeDefined();
+      expect(result.status).toBe(SessionStatus.STOPPED);
+      expect(result.terminationReason).toBe('manual_stop');
     });
 
-    it('should throw error if session not found or not active', async () => {
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
+    it('should throw error when session not found', async () => {
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(null);
 
       await expect(
-        TradingSessionService.stopSession('session-1', 'user-1')
-      ).rejects.toThrow('SESSION_NOT_FOUND_OR_NOT_ACTIVE');
+        tradingSessionService.stopSession('session-1', 'user-1')
+      ).rejects.toThrow('SESSION_NOT_FOUND');
     });
   });
 
@@ -236,57 +203,159 @@ describe('TradingSessionService', () => {
       const mockActiveSession = {
         id: 'session-1',
         userId: 'user-1',
-        status: 'active',
-        endTime: new Date(Date.now() + 30 * 60 * 1000) // 30 minutes from now
+        status: SessionStatus.ACTIVE
       };
 
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(mockActiveSession);
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(mockActiveSession);
 
-      const session = await TradingSessionService.getActiveSession('user-1');
+      const result = await tradingSessionService.getActiveSession('user-1');
 
-      expect(session).toEqual(mockActiveSession);
+      expect(result).toEqual(mockActiveSession);
+      expect(mockPrisma.tradingSession.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          status: { in: [SessionStatus.PENDING, SessionStatus.ACTIVE] }
+        }
+      });
     });
 
-    it('should return null if no active session', async () => {
-      (mockPrisma.tradingSession.findFirst as jest.Mock).mockResolvedValue(null);
+    it('should return null when no active session', async () => {
+      mockPrisma.tradingSession.findFirst.mockResolvedValue(null);
 
-      const session = await TradingSessionService.getActiveSession('user-1');
+      const result = await tradingSessionService.getActiveSession('user-1');
 
-      expect(session).toBeNull();
+      expect(result).toBeNull();
     });
   });
 
   describe('getSessionHistory', () => {
-    it('should return user session history', async () => {
+    it('should return session history with pagination', async () => {
       const mockSessions = [
-        {
-          id: 'session-1',
-          userId: 'user-1',
-          status: 'completed',
-          createdAt: new Date()
-        },
-        {
-          id: 'session-2',
-          userId: 'user-1',
-          status: 'stopped',
-          createdAt: new Date()
-        }
+        { id: 'session-1', userId: 'user-1', status: SessionStatus.COMPLETED },
+        { id: 'session-2', userId: 'user-1', status: SessionStatus.STOPPED }
       ];
 
-      (mockPrisma.tradingSession.findMany as jest.Mock).mockResolvedValue(mockSessions);
+      mockPrisma.tradingSession.findMany.mockResolvedValue(mockSessions);
 
-      const sessions = await TradingSessionService.getSessionHistory('user-1', 10, 0);
+      const result = await tradingSessionService.getSessionHistory('user-1', 10, 0);
 
-      expect(sessions).toEqual(mockSessions);
+      expect(result).toEqual(mockSessions);
       expect(mockPrisma.tradingSession.findMany).toHaveBeenCalledWith({
-        where: {
-          userId: 'user-1',
-          status: { in: ['completed', 'stopped', 'expired'] }
-        },
+        where: { userId: 'user-1' },
         orderBy: { createdAt: 'desc' },
         take: 10,
         skip: 0
       });
+    });
+  });
+
+  describe('updateSessionPerformance', () => {
+    it('should update session performance data', async () => {
+      const mockSession = {
+        id: 'session-1',
+        userId: 'user-1',
+        status: SessionStatus.ACTIVE,
+        lossLimitAmount: { toNumber: () => 100 }
+      };
+
+      const updateData: SessionUpdateData = {
+        currentPnL: -50,
+        tradeCount: 5
+      };
+
+      mockPrisma.tradingSession.findUnique.mockResolvedValue(mockSession);
+      mockPrisma.tradingSession.update.mockResolvedValue({});
+
+      await tradingSessionService.updateSessionPerformance('session-1', updateData);
+
+      expect(mockPrisma.tradingSession.update).toHaveBeenCalledWith({
+        where: { id: 'session-1' },
+        data: expect.objectContaining({
+          updatedAt: expect.any(Date)
+        })
+      });
+    });
+
+    it('should not update inactive session', async () => {
+      const mockSession = {
+        id: 'session-1',
+        status: SessionStatus.STOPPED
+      };
+
+      mockPrisma.tradingSession.findUnique.mockResolvedValue(mockSession);
+
+      await tradingSessionService.updateSessionPerformance('session-1', { currentPnL: -50 });
+
+      expect(mockPrisma.tradingSession.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getSessionStats', () => {
+    it('should return session statistics', async () => {
+      const mockAggregateResult = {
+        _count: 10,
+        _avg: {
+          durationMinutes: 240,
+          realizedPnl: { toNumber: () => 25.5 },
+          totalTrades: 8
+        }
+      };
+
+      const mockGroupByResult = [
+        { status: SessionStatus.COMPLETED, _count: { status: 5 } },
+        { status: SessionStatus.STOPPED, _count: { status: 3 } },
+        { status: SessionStatus.ACTIVE, _count: { status: 2 } }
+      ];
+
+      mockPrisma.tradingSession.aggregate.mockResolvedValue(mockAggregateResult);
+      mockPrisma.tradingSession.groupBy.mockResolvedValue(mockGroupByResult);
+
+      const result = await tradingSessionService.getSessionStats('user-1');
+
+      expect(result.totalSessions).toBe(10);
+      expect(result.averageDuration).toBe(240);
+      expect(result.statusBreakdown).toEqual({
+        [SessionStatus.COMPLETED]: 5,
+        [SessionStatus.STOPPED]: 3,
+        [SessionStatus.ACTIVE]: 2
+      });
+    });
+  });
+
+  describe('checkSessionExpiration', () => {
+    it('should expire an active session that has passed end time', async () => {
+      const pastDate = new Date(Date.now() - 3600000); // 1 hour ago
+      const mockSession = {
+        id: 'session-1',
+        userId: 'user-1',
+        status: SessionStatus.ACTIVE,
+        endTime: pastDate
+      };
+
+      mockPrisma.tradingSession.findUnique.mockResolvedValue(mockSession);
+      
+      // Mock the stopSession method call
+      jest.spyOn(tradingSessionService, 'stopSession').mockResolvedValue({} as any);
+
+      const result = await tradingSessionService.checkSessionExpiration('session-1');
+
+      expect(result).toBe(true);
+      expect(tradingSessionService.stopSession).toHaveBeenCalledWith('session-1', 'user-1', 'time_expired');
+    });
+
+    it('should not expire session that has not reached end time', async () => {
+      const futureDate = new Date(Date.now() + 3600000); // 1 hour from now
+      const mockSession = {
+        id: 'session-1',
+        status: SessionStatus.ACTIVE,
+        endTime: futureDate
+      };
+
+      mockPrisma.tradingSession.findUnique.mockResolvedValue(mockSession);
+
+      const result = await tradingSessionService.checkSessionExpiration('session-1');
+
+      expect(result).toBe(false);
     });
   });
 });

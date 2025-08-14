@@ -114,7 +114,9 @@ export class TradingSessionService {
             userId,
             durationMinutes,
             lossLimitAmount: new Decimal(lossLimitAmount),
-            lossLimitPercentage: new Decimal(lossLimitPercent),
+            lossLimitPercent: new Decimal(lossLimitPercent),
+            currentBalance: user.accountBalance,
+            startingBalance: user.accountBalance,
             status: SessionStatus.PENDING,
             endTime
           }
@@ -320,7 +322,7 @@ export class TradingSessionService {
       }
       
       if (updateData.tradeCount !== undefined) {
-        updateFields.totalTrades = updateData.tradeCount;
+        updateFields.tradeCount = updateData.tradeCount;
       }
 
       await prisma.tradingSession.update({
@@ -367,7 +369,7 @@ export class TradingSessionService {
         _avg: {
           durationMinutes: true,
           realizedPnl: true,
-          totalTrades: true
+          tradeCount: true
         }
       });
 
@@ -381,9 +383,9 @@ export class TradingSessionService {
 
       return {
         totalSessions: stats._count,
-        averageDuration: stats._avg.durationMinutes,
-        averagePnL: stats._avg.realizedPnl,
-        averageTradeCount: stats._avg.totalTrades,
+        averageDuration: stats._avg?.durationMinutes || 0,
+        averagePnL: stats._avg?.realizedPnl || 0,
+        averageTradeCount: stats._avg?.tradeCount || 0,
         statusBreakdown: statusCounts.reduce((acc, item) => {
           acc[item.status] = item._count.status;
           return acc;

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { SessionCreationForm } from '../components/session/SessionCreationForm';
-import { ActiveSessionDashboard } from '../components/session/ActiveSessionDashboard';
-import { sessionApi, ActiveSessionData } from '../services/sessionApi';
+import ActiveSessionDashboard from '../components/session/ActiveSessionDashboard';
+import tradingSessionApi, { type SessionSummary } from '../services/tradingSessionApi';
 
 const SessionsPage: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [activeSession, setActiveSession] = useState<ActiveSessionData | null>(null);
+  const [activeSession, setActiveSession] = useState<SessionSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Check for active session on component mount
@@ -13,7 +13,7 @@ const SessionsPage: React.FC = () => {
     const checkActiveSession = async () => {
       try {
         setLoading(true);
-        const session = await sessionApi.getActiveSession();
+        const session = await tradingSessionApi.getActiveSession();
         setActiveSession(session);
       } catch (err) {
         console.error('Failed to check active session:', err);
@@ -34,6 +34,17 @@ const SessionsPage: React.FC = () => {
   const handleSessionStopped = () => {
     setActiveSession(null);
     setShowCreateForm(false);
+  };
+
+  const handleRefreshSession = async () => {
+    if (activeSession) {
+      try {
+        const session = await tradingSessionApi.getSessionSummary(activeSession.id);
+        setActiveSession(session);
+      } catch (error) {
+        console.error('Failed to refresh session:', error);
+      }
+    }
   };
 
   const handleCreateNewSession = () => {
@@ -86,14 +97,18 @@ const SessionsPage: React.FC = () => {
           /* Session Creation Form */
           <div className="mb-8">
             <SessionCreationForm
-              onSessionCreated={handleSessionCreated}
-              onCancel={handleCancelCreate}
+              onSuccess={handleSessionCreated}
+              onClose={handleCancelCreate}
             />
           </div>
         ) : activeSession ? (
           /* Active Session Dashboard */
           <div className="space-y-8">
-            <ActiveSessionDashboard onSessionStopped={handleSessionStopped} />
+            <ActiveSessionDashboard 
+              session={activeSession}
+              onSessionStopped={handleSessionStopped}
+              onRefresh={handleRefreshSession}
+            />
             
             {/* Session Tips */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
