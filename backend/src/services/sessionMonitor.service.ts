@@ -177,7 +177,7 @@ class SessionMonitorService {
           terminationTime: new Date(),
           finalStats: {
             actualDuration: stoppedSession.actualDurationMinutes,
-            totalTrades: stoppedSession.totalTrades,
+            totalTrades: 0, // TODO: Add totalTrades field to TradingSession model
             finalPnL: Number(stoppedSession.realizedPnl),
             performancePercentage: Number(stoppedSession.sessionPerformancePercentage)
           },
@@ -322,7 +322,7 @@ class SessionMonitorService {
     }
 
     // Check if loss limit would be exceeded
-    const currentLoss = activeSession.realizedPnl < 0 ? Math.abs(Number(activeSession.realizedPnl)) : 0;
+    const currentLoss = Number(activeSession.realizedPnl) < 0 ? Math.abs(Number(activeSession.realizedPnl)) : 0;
     const lossLimit = Number(activeSession.lossLimitAmount);
     
     if (currentLoss >= lossLimit) {
