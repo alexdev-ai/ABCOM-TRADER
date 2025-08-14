@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth.middleware';
 import rateLimit from 'express-rate-limit';
-import { tradingSessionService } from '../services/tradingSession.service';
+import TradingSessionService from '../services/tradingSession.service';
 import { sessionMonitorService } from '../services/sessionMonitor.service';
 
 const router = Router();
@@ -23,8 +23,11 @@ router.post(
         return res.status(401).json({ success: false, message: 'Authentication required' });
       }
 
-      const config = req.body;
-      const session = await tradingSessionService.createSession(userId, config);
+      const session = await TradingSessionService.createSession({
+        userId,
+        durationMinutes: 240, // Default 4 hours
+        lossLimitAmount: 1000 // Default $1000 loss limit
+      });
 
       res.status(201).json({
         success: true,
@@ -60,13 +63,24 @@ router.get(
         return res.status(401).json({ success: false, message: 'Authentication required' });
       }
 
-      const sessionData = await tradingSessionService.getActiveSessionData(userId);
+      const sessionData = await TradingSessionService.getActiveSession(userId);
       
       if (!sessionData) {
         return res.status(404).json({ success: false, message: 'No active session found' });
       }
 
-      res.json({ success: true, data: sessionData });
+      res.json({ 
+        success: true, 
+        data: {
+          sessionId: sessionData.id,
+          status: sessionData.status,
+          durationMinutes: sessionData.durationMinutes,
+          lossLimitAmount: Number(sessionData.lossLimitAmount),
+          realizedPnl: Number(sessionData.realizedPnl),
+          startTime: sessionData.startTime,
+          endTime: sessionData.endTime
+        }
+      });
     } catch (error) {
       res.status(500).json({
         success: false,
@@ -93,7 +107,7 @@ router.post(
         return res.status(401).json({ success: false, message: 'Authentication required' });
       }
 
-      const session = await tradingSessionService.startSession(sessionId, userId);
+      const session = await TradingSessionService.startSession(sessionId, userId);
 
       res.json({
         success: true,
@@ -132,7 +146,7 @@ router.post(
         return res.status(401).json({ success: false, message: 'Authentication required' });
       }
 
-      const session = await tradingSessionService.stopSession(sessionId, userId, reason);
+      const session = await TradingSessionService.stopSession(sessionId, userId);
 
       res.json({
         success: true,
@@ -142,7 +156,7 @@ router.post(
           status: session.status,
           endTime: session.endTime,
           actualDurationMinutes: session.actualDurationMinutes,
-          totalTrades: session.totalTrades,
+          tradeCount: session.tradeCount || 0,
           realizedPnl: Number(session.realizedPnl),
           terminationReason: session.terminationReason
         }
