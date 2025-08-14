@@ -22,6 +22,7 @@ import sessionAnalyticsRoutes from './routes/sessionAnalytics.routes';
 import portfolioOptimizationRoutes from './routes/portfolioOptimization.routes';
 import tradingSessionRoutes from './routes/tradingSession.routes';
 import riskRoutes from '@/routes/risk.routes';
+import healthRoutes from '@/routes/health.routes';
 import { sessionMonitorService } from '@/services/sessionMonitor.service';
 
 // Load environment variables
@@ -58,7 +59,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Apply general rate limiting
 app.use(generalLimiter);
 
-// Health check endpoint
+// Health check endpoints
+app.use('/api/v1/health', healthRoutes);
+
+// Basic health check endpoint (Railway compatibility)
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -114,20 +118,28 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
 // Create HTTP server
 const server = createServer(app);
 
-// Initialize WebSocket server
-websocketService.initialize(server);
+// Initialize WebSocket server with error handling
+try {
+  websocketService.initialize(server);
+  console.log('✅ WebSocket service initialized successfully');
+} catch (error) {
+  console.error('⚠️ WebSocket service initialization failed:', error);
+  console.log('📡 Server will continue without WebSocket support');
+}
 
 // Start server
 server.listen(PORT, () => {
   console.log(`🚀 SmartTrade AI Backend running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔐 Auth API: http://localhost:${PORT}/api/v1/auth`);
-  console.log(`💰 Funding API: http://localhost:${PORT}/api/v1/funding`);
-  console.log(`📈 Portfolio API: http://localhost:${PORT}/api/v1/portfolio`);
-  console.log(`🔧 Portfolio Optimization API: http://localhost:${PORT}/api/v1/portfolio-optimization`);
-  console.log(`📊 Trading API: http://localhost:${PORT}/api/v1/trading`);
-  console.log(`🌐 WebSocket API: ws://localhost:${PORT}/ws`);
+  console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`📊 Health check (API): http://0.0.0.0:${PORT}/api/v1/health`);
+  console.log(`🔐 Auth API: http://0.0.0.0:${PORT}/api/v1/auth`);
+  console.log(`💰 Funding API: http://0.0.0.0:${PORT}/api/v1/funding`);
+  console.log(`📈 Portfolio API: http://0.0.0.0:${PORT}/api/v1/portfolio`);
+  console.log(`🔧 Portfolio Optimization API: http://0.0.0.0:${PORT}/api/v1/portfolio-optimization`);
+  console.log(`📊 Trading API: http://0.0.0.0:${PORT}/api/v1/trading`);
+  console.log(`🌐 WebSocket API: ws://0.0.0.0:${PORT}/ws`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('✅ Server is ready to accept connections');
 });
 
 // Graceful shutdown
