@@ -11,15 +11,27 @@ if (process.env.REDIS_URL) {
   redis = new Redis(process.env.REDIS_URL);
 }
 
-// Basic health check
+// Basic health check - no database required
 router.get('/', (req: Request, res: Response) => {
-  res.status(200).json({
-    success: true,
-    message: 'SmartTrade AI Backend is running',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+  try {
+    res.status(200).json({
+      success: true,
+      message: 'SmartTrade AI Backend is running',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      port: process.env.PORT || 'unknown',
+      database: process.env.DATABASE_URL ? 'configured' : 'missing',
+      redis: process.env.REDIS_URL ? 'configured' : 'missing'
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Database health check
