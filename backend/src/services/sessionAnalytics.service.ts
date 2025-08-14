@@ -166,7 +166,7 @@ export class SessionAnalyticsService {
           timeElapsedPercentage = (elapsed / totalDuration) * 100;
         }
 
-        const totalTrades = session.totalTrades || 0;
+        const totalTrades = session.tradeCount || 0;
         const tradingVelocity = session.startTime ? 
           totalTrades / ((Date.now() - session.startTime.getTime()) / (1000 * 60 * 60)) : 0; // trades per hour
 
@@ -632,7 +632,7 @@ export class SessionAnalyticsService {
     ).length;
 
     // Trading calculations
-    const totalTrades = sessions.reduce((sum, s) => sum + (s.totalTrades || 0), 0);
+    const totalTrades = sessions.reduce((sum, s) => sum + (s.tradeCount || 0), 0);
     const averageTradesPerSession = totalSessions > 0 ? totalTrades / totalSessions : 0;
 
     // Timing analysis

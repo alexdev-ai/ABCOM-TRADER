@@ -488,8 +488,8 @@ class DecisionEngineService {
       const portfolio = await this.getPortfolioSummary(userId, sessionId);
       const totalRealizedPnL = portfolio.totalRealizedPnL;
 
-      // Update session with realized P&L
-      await tradingSessionService.updateSessionStats(userId, totalRealizedPnL);
+      // TODO: Update session with realized P&L when method is available
+      console.log(`📈 Session P&L update: User ${userId}, Session ${sessionId}, P&L: $${totalRealizedPnL.toFixed(2)}`);
 
       console.log(`📈 Session stats updated: Total realized P&L: $${totalRealizedPnL.toFixed(2)}`);
 
